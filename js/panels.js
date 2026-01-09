@@ -1,6 +1,6 @@
 // panels.js - Panel management, settings, drag/drop, resize
 
-import { PANELS, NON_DRAGGABLE_PANELS, NEWS_STREAMS } from './constants.js';
+import { PANELS, NON_DRAGGABLE_PANELS, NEWS_STREAMS, CORS_PROXIES } from './constants.js';
 
 // Drag state
 let draggedPanel = null;
@@ -15,6 +15,10 @@ let currentStreamIndex = 0;
 let selectedStreams = new Set(); // For multi-select tiling
 let livestreamMode = 'single';
 let cycleInterval = null;
+
+// Cache resolved live video IDs to avoid hammering proxies/YouTube
+const LIVE_VIDEO_CACHE_TTL_MS = 2 * 60 * 1000;
+const liveVideoIdCache = new Map(); // channelId -> { videoId, ts }
 
 // Panels are enabled by default unless explicitly disabled in storage
 const DEFAULT_DISABLED_PANELS = [];
@@ -405,19 +409,24 @@ export function saveLivestreamUrl() {
 
 // Render stream embed for current selection
 function renderStreamEmbed(stream) {
-    // Use youtube.com for maximum embed compatibility.
-    // (Some live streams fail on youtube-nocookie and/or when an origin/referrer policy is forced.)
-    const ytHost = 'https://www.youtube.com';
+    const originParam = (typeof location !== 'undefined' && location.origin)
+        ? `&origin=${encodeURIComponent(location.origin)}`
+        : '';
+
+    // Default to privacy-enhanced embeds (avoids consent prompts in some browsers).
+    const ytHost = 'https://www.youtube-nocookie.com';
 
     // YouTube live stream by channelId (official embed URL)
     if (stream.type === 'youtube-live-channel' && stream.channelId) {
-        const embedUrl = `${ytHost}/embed/live_stream?channel=${stream.channelId}&autoplay=1&mute=1&playsinline=1&rel=0`;
-        return `<iframe src="${embedUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen></iframe>`;
+        const embedUrl = `${ytHost}/embed/live_stream?channel=${stream.channelId}&autoplay=1&mute=1&playsinline=1&rel=0${originParam}`;
+        // We attach data-channel-id so we can opportunistically swap this to a concrete /embed/<videoId>
+        // when the channel /live page can be resolved via CORS proxy.
+        return `<iframe data-yt-live-channel-id="${stream.channelId}" src="${embedUrl}" title="${stream.name || 'Live stream'}" loading="lazy" referrerpolicy="origin-when-cross-origin" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
     }
 
     // Try embedding a YouTube /live landing page anyway (may be blocked by YouTube)
     if (stream.type === 'youtube-page' && stream.pageUrl) {
-        return `<iframe src="${stream.pageUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen></iframe>`;
+        return `<iframe src="${stream.pageUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" referrerpolicy="origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
     }
 
     // YouTube channel live page
@@ -434,8 +443,8 @@ function renderStreamEmbed(stream) {
     
     // Legacy YouTube video ID
     if (stream.type === 'youtube' && stream.videoId) {
-        const embedUrl = `${ytHost}/embed/${stream.videoId}?autoplay=1&mute=1&playsinline=1&rel=0`;
-        return `<iframe src="${embedUrl}" title="${stream.name || 'YouTube stream'}" loading="lazy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen></iframe>`;
+        const embedUrl = `${ytHost}/embed/${stream.videoId}?autoplay=1&mute=1&playsinline=1&rel=0${originParam}`;
+        return `<iframe src="${embedUrl}" title="${stream.name || 'YouTube stream'}" loading="lazy" referrerpolicy="origin-when-cross-origin" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
     }
     
     // External URL
@@ -537,6 +546,78 @@ function renderStreamTiles() {
             return `<div class="stream-tile">${renderStreamEmbed(stream)}</div>`;
         }).join('')}
     </div>`;
+
+    // After the DOM is updated, opportunistically resolve channel live streams to a concrete video ID.
+    // This can recover channels where /embed/live_stream fails but /embed/<videoId> works.
+    hydrateYouTubeLiveEmbeds(container);
+}
+
+async function fetchTextViaProxies(url, timeoutMs = 12000) {
+    const proxies = Array.isArray(CORS_PROXIES) && CORS_PROXIES.length ? CORS_PROXIES : ['https://corsproxy.io/?'];
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        for (const proxy of proxies) {
+            const proxiedUrl = `${proxy}${encodeURIComponent(url)}`;
+            try {
+                const res = await fetch(proxiedUrl, { signal: controller.signal, cache: 'no-store' });
+                if (!res.ok) continue;
+                const text = await res.text();
+                if (text && text.length > 100) return text;
+            } catch (e) {
+                // try next proxy
+            }
+        }
+        return null;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function extractFirstYouTubeVideoIdFromHtml(html) {
+    if (!html) return null;
+    const match = html.match(/watch\?v=([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : null;
+}
+
+async function resolveLiveVideoIdForChannel(channelId) {
+    const cached = liveVideoIdCache.get(channelId);
+    const now = Date.now();
+    if (cached && (now - cached.ts) < LIVE_VIDEO_CACHE_TTL_MS) return cached.videoId;
+
+    const liveUrl = `https://www.youtube.com/channel/${channelId}/live`;
+    const html = await fetchTextViaProxies(liveUrl);
+    const videoId = extractFirstYouTubeVideoIdFromHtml(html);
+    if (videoId) {
+        liveVideoIdCache.set(channelId, { videoId, ts: now });
+    }
+    return videoId;
+}
+
+function hydrateYouTubeLiveEmbeds(rootEl) {
+    if (!rootEl) return;
+    const iframes = rootEl.querySelectorAll('iframe[data-yt-live-channel-id]');
+    if (!iframes.length) return;
+
+    iframes.forEach((iframe) => {
+        const channelId = iframe.getAttribute('data-yt-live-channel-id');
+        if (!channelId) return;
+        if (iframe.getAttribute('data-yt-live-resolved') === '1') return;
+        iframe.setAttribute('data-yt-live-resolved', '1');
+
+        // Resolve in background; if we find a concrete videoId, swap to /embed/<videoId>.
+        resolveLiveVideoIdForChannel(channelId)
+            .then((videoId) => {
+                if (!videoId) return;
+                const originParam = (typeof location !== 'undefined' && location.origin)
+                    ? `&origin=${encodeURIComponent(location.origin)}`
+                    : '';
+                const desired = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&rel=0${originParam}`;
+                if (iframe.src === desired) return;
+                iframe.src = desired;
+            })
+            .catch(() => {});
+    });
 }
 
 // Render stream selector buttons (now for multi-select)
