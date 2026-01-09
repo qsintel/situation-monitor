@@ -462,14 +462,42 @@
             const basePath = window.__SM_BASE_PATH__ || '/';
             const mainUrl = `${basePath}js/main.js`;
 
+            const setSplashStatus = (message) => {
+                const statusEl = document.getElementById('splashStatus');
+                if (statusEl) statusEl.textContent = message;
+            };
+
+            // If ES module evaluation/imports fail, moduleScript.onerror will NOT fire.
+            // These handlers surface that failure so the splash isn't stuck on "Initializing...".
+            window.addEventListener('error', (event) => {
+                try {
+                    const filename = event?.filename || '';
+                    // Avoid noisy third-party errors; focus on our app startup.
+                    if (filename && !filename.includes('/js/')) return;
+                    const msg = event?.message || 'Unknown error';
+                    const filePart = filename ? filename.split('/').pop() : '';
+                    const linePart = event?.lineno ? `:${event.lineno}` : '';
+                    setSplashStatus(`Startup error: ${msg}${filePart ? ` (${filePart}${linePart})` : ''}`);
+                } catch {
+                    setSplashStatus('Startup error: Unknown error');
+                }
+            }, { once: true });
+
+            window.addEventListener('unhandledrejection', (event) => {
+                try {
+                    const reason = event?.reason;
+                    const msg = reason?.message || String(reason || 'Unknown error');
+                    setSplashStatus(`Startup error: ${msg}`);
+                } catch {
+                    setSplashStatus('Startup error: Unhandled promise rejection');
+                }
+            }, { once: true });
+
             const moduleScript = document.createElement('script');
             moduleScript.type = 'module';
             moduleScript.src = mainUrl;
             moduleScript.onerror = function () {
-                const statusEl = document.getElementById('splashStatus');
-                if (statusEl) {
-                    statusEl.textContent = `Failed to load app scripts (${mainUrl}). If this is GitHub Pages, verify the site URL ends with a trailing '/' and that Pages is deployed from the repo root.`;
-                }
+                setSplashStatus(`Failed to load app scripts (${mainUrl}). If this is GitHub Pages, verify the site URL ends with a trailing '/' and that Pages is deployed from the repo root.`);
             };
 
             document.body.appendChild(moduleScript);
