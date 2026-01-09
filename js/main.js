@@ -669,6 +669,9 @@ function renderFilteredNews() {
             getAircraftArrow
         );
     }
+
+    // Pinned dashboard panels are clones; refresh them so they reflect the updated content.
+    renderPinnedPanels();
 }
 
 // Expose region filter to window

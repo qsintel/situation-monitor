@@ -34,19 +34,17 @@ export const NON_DRAGGABLE_PANELS = ['map', 'tbpn'];
 
 // Live news streams - prefer stable channelId live embeds when possible
 export const NEWS_STREAMS = [
-    // Some outlets frequently return "Video unavailable" when embedded (geo/rights restrictions
-    // or not actually live 24/7). Keep them available, but default to opening externally.
-    { name: 'Sky News', type: 'youtube-channel', channelUrl: 'https://www.youtube.com/channel/UCoMdktPbSTixAyNGwb-UYkQ/live' },
+    { name: 'Sky News', type: 'youtube-live-channel', channelId: 'UCoMdktPbSTixAyNGwb-UYkQ' },
     { name: 'Al Jazeera', type: 'youtube-live-channel', channelId: 'UCNye-wNBqNL5ZzHSJj3l8Bg' },
     { name: 'France 24', type: 'youtube-live-channel', channelId: 'UCQfwfsi5VrQ8yKZ-UWmAEFg' },
     { name: 'DW News', type: 'youtube-live-channel', channelId: 'UCknLrEdhRCp1aegoMqRaCZg' },
-    { name: 'Euronews', type: 'youtube-channel', channelUrl: 'https://www.youtube.com/channel/UCSrZ3UV4jOidv8ppoVuvW9Q/live' },
+    { name: 'Euronews', type: 'youtube-live-channel', channelId: 'UCSrZ3UV4jOidv8ppoVuvW9Q' },
     { name: 'NBC News NOW', type: 'youtube-live-channel', channelId: 'UCeY0bbntWzzVIaj2z3QigXg' },
-    { name: 'ABC News', type: 'youtube-channel', channelUrl: 'https://www.youtube.com/channel/UCBi2mrWuNuyYy4gbM6fU18Q/live' },
+    { name: 'ABC News', type: 'youtube-live-channel', channelId: 'UCBi2mrWuNuyYy4gbM6fU18Q' },
     { name: 'CBS News', type: 'youtube-live-channel', channelId: 'UC8p1vwvWtl6T73JiExfWs1g' },
     { name: 'Reuters', type: 'youtube-live-channel', channelId: 'UChqUTb7kYRX8-EiaN3XFrSQ' },
-    { name: 'AP News', type: 'youtube-channel', channelUrl: 'https://www.youtube.com/channel/UC52X5wxOL_s5yw0dQk7NtgA/live' },
-    { name: 'BBC News', type: 'youtube-channel', channelUrl: 'https://www.youtube.com/channel/UC16niRr50-MSBwiO3YDb3RA/live' }
+    { name: 'AP News', type: 'youtube-live-channel', channelId: 'UC52X5wxOL_s5yw0dQk7NtgA' },
+    { name: 'BBC News', type: 'youtube-live-channel', channelId: 'UC16niRr50-MSBwiO3YDb3RA' }
 ];
 
 // Map zoom settings

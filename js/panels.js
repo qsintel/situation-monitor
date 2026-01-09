@@ -69,15 +69,26 @@ function loadCustomStreams() {
         const sanitized = parsed
             .filter(isValidStreamObject)
             .map((s) => {
-                // Back-compat: older saves treated channel/handle URLs as external-only.
-                // If the saved channelUrl is actually a /live landing page, move it to the embeddable-attempt bucket.
-                if (s.type === 'youtube-channel' && typeof s.channelUrl === 'string') {
-                    const url = s.channelUrl;
-                    const isLiveLanding = /youtube\.com\/(?:@[^\/]+|c\/[^\/]+)\/live/i.test(url) || /youtube\.com\/.*\/live/i.test(url);
-                    if (isLiveLanding) {
-                        return { name: s.name, type: 'youtube-page', pageUrl: url };
+                // Back-compat: older saves treated YouTube URLs as external-only.
+                // Prefer upgrading any channelId-based /live URL to the official embeddable live_stream form.
+                const maybeUrl =
+                    (s.type === 'youtube-channel' && typeof s.channelUrl === 'string') ? s.channelUrl :
+                    (s.type === 'youtube-page' && typeof s.pageUrl === 'string') ? s.pageUrl :
+                    (s.type === 'external' && typeof s.url === 'string') ? s.url :
+                    null;
+
+                if (maybeUrl && /youtube\.(com|be)\//i.test(maybeUrl)) {
+                    // If it's a concrete /channel/UC... URL, force embeddable channel live.
+                    const channelIdMatch = maybeUrl.match(/youtube\.com\/channel\/(UC[a-zA-Z0-9_-]{10,})/i);
+                    if (channelIdMatch) {
+                        return { name: s.name, type: 'youtube-live-channel', channelId: channelIdMatch[1] };
                     }
+
+                    // Otherwise, fall back to our standard inference (watch links -> video embeds, handle/c/live -> youtube-page).
+                    const inferred = inferStreamFromUrl(s.name, maybeUrl);
+                    if (inferred) return inferred;
                 }
+
                 return s;
             });
 
@@ -394,20 +405,19 @@ export function saveLivestreamUrl() {
 
 // Render stream embed for current selection
 function renderStreamEmbed(stream) {
-    const originParam = (typeof location !== 'undefined' && location.origin)
-        ? `&origin=${encodeURIComponent(location.origin)}`
-        : '';
-    const ytHost = 'https://www.youtube-nocookie.com';
+    // Use youtube.com for maximum embed compatibility.
+    // (Some live streams fail on youtube-nocookie and/or when an origin/referrer policy is forced.)
+    const ytHost = 'https://www.youtube.com';
 
     // YouTube live stream by channelId (official embed URL)
     if (stream.type === 'youtube-live-channel' && stream.channelId) {
-        const embedUrl = `${ytHost}/embed/live_stream?channel=${stream.channelId}&autoplay=1&mute=1&playsinline=1&rel=0${originParam}`;
-        return `<iframe src="${embedUrl}" title="${stream.name || 'Live stream'}" loading="lazy" referrerpolicy="origin-when-cross-origin" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+        const embedUrl = `${ytHost}/embed/live_stream?channel=${stream.channelId}&autoplay=1&mute=1&playsinline=1&rel=0`;
+        return `<iframe src="${embedUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen></iframe>`;
     }
 
     // Try embedding a YouTube /live landing page anyway (may be blocked by YouTube)
     if (stream.type === 'youtube-page' && stream.pageUrl) {
-        return `<iframe src="${stream.pageUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" referrerpolicy="origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+        return `<iframe src="${stream.pageUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen></iframe>`;
     }
 
     // YouTube channel live page
@@ -424,8 +434,8 @@ function renderStreamEmbed(stream) {
     
     // Legacy YouTube video ID
     if (stream.type === 'youtube' && stream.videoId) {
-        const embedUrl = `${ytHost}/embed/${stream.videoId}?autoplay=1&mute=1&playsinline=1&rel=0${originParam}`;
-        return `<iframe src="${embedUrl}" title="${stream.name || 'YouTube stream'}" loading="lazy" referrerpolicy="origin-when-cross-origin" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+        const embedUrl = `${ytHost}/embed/${stream.videoId}?autoplay=1&mute=1&playsinline=1&rel=0`;
+        return `<iframe src="${embedUrl}" title="${stream.name || 'YouTube stream'}" loading="lazy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen></iframe>`;
     }
     
     // External URL
