@@ -8,22 +8,48 @@ import {
 } from './constants.js';
 import { escapeHtml, getTimeAgo } from './utils.js';
 
+// Time filter hours mapping
+const TIME_FILTER_HOURS = {
+    'all': 999999,
+    '1h': 1,
+    '6h': 6,
+    '12h': 12,
+    '24h': 24
+};
+
+// Filter disasters by time period
+function filterDisastersByTime(disasters, timeFilter) {
+    if (!disasters || timeFilter === 'all') return disasters;
+    
+    const now = new Date();
+    const maxHours = TIME_FILTER_HOURS[timeFilter] || 999999;
+    const cutoff = new Date(now.getTime() - maxHours * 60 * 60 * 1000);
+    
+    return disasters.filter(disaster => {
+        const disasterTime = disaster.time ? new Date(disaster.time) : null;
+        if (!disasterTime || isNaN(disasterTime.getTime())) return false;
+        return disasterTime >= cutoff;
+    });
+}
+
 // Map state
 let map = null;
 let markersLayer = null;
 let hotspotMarkers = null;
 let currentView = 'global';
 
-// Region definitions with center coords and zoom levels
+// Region definitions with center coords, zoom levels, and bounding boxes for flight data
+// Note: OpenSky API uses lat/lon bounding boxes, not actual country borders.
+// These bounds are approximate regional rectangles that cover each area.
 const REGIONS = {
-    'global': { center: [20, 0], zoom: 2, title: 'GLOBAL ACTIVITY MONITOR' },
-    'us': { center: [39, -98], zoom: 4, title: 'UNITED STATES' },
-    'europe': { center: [54, 15], zoom: 4, title: 'EUROPE' },
-    'asia': { center: [25, 105], zoom: 3, title: 'ASIA-PACIFIC' },
-    'russia': { center: [60, 80], zoom: 3, title: 'RUSSIA & EURASIA' },
-    'mideast': { center: [29, 42], zoom: 5, title: 'MIDDLE EAST' },
-    'ukraine': { center: [48.5, 35], zoom: 6, title: 'UKRAINE CONFLICT ZONE' },
-    'taiwan': { center: [24, 121], zoom: 6, title: 'TAIWAN STRAIT' }
+    'global': { center: [20, 0], zoom: 2, title: 'GLOBAL ACTIVITY MONITOR', bounds: null }, // No flights on global
+    'us': { center: [39, -98], zoom: 4, title: 'UNITED STATES', bounds: { north: 49.5, south: 24.5, west: -125, east: -66 } },
+    'europe': { center: [54, 15], zoom: 4, title: 'EUROPE', bounds: { north: 71, south: 35, west: -11, east: 40 } },
+    'asia': { center: [25, 105], zoom: 3, title: 'ASIA-PACIFIC', bounds: { north: 53, south: 5, west: 70, east: 150 } },
+    'russia': { center: [60, 80], zoom: 3, title: 'RUSSIA & EURASIA', bounds: { north: 75, south: 41, west: 19, east: 170 } },
+    'mideast': { center: [29, 42], zoom: 5, title: 'MIDDLE EAST', bounds: { north: 42, south: 12, west: 25, east: 63 } },
+    'ukraine': { center: [48.5, 35], zoom: 6, title: 'UKRAINE CONFLICT ZONE', bounds: { north: 52.5, south: 44.3, west: 22, east: 40.5 } },
+    'taiwan': { center: [24, 121], zoom: 6, title: 'TAIWAN STRAIT', bounds: { north: 26, south: 21.5, west: 118, east: 124 } }
 };
 
 // Export state getters/setters
@@ -77,6 +103,14 @@ export function updateFlashback() {
     console.log('Flashback feature - to be implemented with historical data');
 }
 
+// Word boundary regex check - prevents matching "tartu" in "startup"
+function matchesAsWord(text, keyword) {
+    // Escape special regex chars in keyword, then wrap with word boundaries
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+    return regex.test(text);
+}
+
 // Location priority - more specific locations should be preferred over general regions
 const LOCATION_PRIORITY = {
     // Cities are most specific (priority 3)
@@ -114,9 +148,9 @@ export function analyzeHotspotActivity(allNews) {
         const matches = [];
         Object.entries(LOCATION_COORDS).forEach(([keyword, coords]) => {
             const keywordLower = keyword.toLowerCase();
-            // Check if keyword appears in title (higher weight) or description/topics
-            const inTitle = title.includes(keywordLower);
-            const inText = text.includes(keywordLower) || topics.includes(keywordLower);
+            // Check if keyword appears as a whole word (prevents "tartu" matching in "startup")
+            const inTitle = matchesAsWord(title, keywordLower);
+            const inText = matchesAsWord(text, keywordLower) || topics.some(t => matchesAsWord(t, keywordLower));
             
             if (inText) {
                 const basePriority = getLocationPriority(keywordLower);
@@ -309,19 +343,52 @@ function initMap(container) {
     return map;
 }
 
+// Flight data layer group
+let flightMarkers = null;
+
+// Update flights toggle button state based on region
+function updateFlightsToggleUI(isGlobal) {
+    const btn = document.getElementById('flightsToggle');
+    if (!btn) return;
+    
+    if (isGlobal) {
+        btn.textContent = 'Flights: Disabled';
+        btn.classList.remove('active');
+        btn.classList.add('disabled');
+        btn.title = 'Select a region to view flight data';
+    } else {
+        btn.classList.remove('disabled');
+        const isEnabled = btn.classList.contains('active') || btn.dataset.layer === 'flights';
+        btn.textContent = 'Flights';
+        btn.title = 'Toggle Flights';
+    }
+}
+
 // Render the global map
 export async function renderGlobalMap(
     activityData,
-    earthquakes,
+    disasters,
     allNews,
     mapLayers,
     getMonitorHotspots,
     fetchFlightData,
     classifyAircraft,
-    getAircraftArrow
+    getAircraftArrow,
+    timeFilter = '12h'
 ) {
     const mapPanel = document.getElementById('mapPanel');
     if (!mapPanel) return;
+    
+    // Get current region bounds for flight fetching
+    const region = REGIONS[currentView] || REGIONS['global'];
+    const isGlobal = region.bounds === null;
+    const shouldFetchFlights = mapLayers.flights && !isGlobal;
+    
+    // Update flights toggle UI
+    updateFlightsToggleUI(isGlobal);
+    
+    // Filter disasters by time period
+    const filteredDisasters = filterDisastersByTime(disasters, timeFilter);
     
     // Check if map container exists, if not create it
     let mapContainer = mapPanel.querySelector('#leaflet-map');
@@ -331,24 +398,146 @@ export async function renderGlobalMap(
         mapContainer = mapPanel.querySelector('#leaflet-map');
         
         // Initialize map after container is in DOM
-        setTimeout(() => {
+        setTimeout(async () => {
             initMap(mapContainer);
-            updateMarkers(activityData, allNews, mapLayers, getMonitorHotspots);
+            flightMarkers = L.layerGroup().addTo(map);
+            const flights = shouldFetchFlights ? await fetchFlightData(region.bounds) : [];
+            updateMarkers(activityData, allNews, mapLayers, getMonitorHotspots, filteredDisasters, flights, classifyAircraft, getAircraftArrow);
         }, 100);
     } else {
         // Map already exists, just update markers
-        updateMarkers(activityData, allNews, mapLayers, getMonitorHotspots);
+        const flights = shouldFetchFlights ? await fetchFlightData(region.bounds) : [];
+        updateMarkers(activityData, allNews, mapLayers, getMonitorHotspots, filteredDisasters, flights, classifyAircraft, getAircraftArrow);
     }
 }
 
+// Create earthquake/disaster marker icon - uses colored diamonds
+function createDisasterIcon(type, magnitude) {
+    const colors = {
+        earthquake: '#8B4513',  // Brown
+        tsunami: '#4169E1',     // Royal blue
+        hurricane: '#708090',   // Slate gray
+        wildfire: '#FF6600',    // Orange
+        flood: '#4682B4',       // Steel blue
+        volcano: '#DC143C',     // Crimson red
+        drought: '#DEB887',     // Burlywood tan
+        dust: '#C4A484',        // Sandy brown
+        landslide: '#6B4423',   // Dark brown
+        default: '#DAA520'      // Goldenrod
+    };
+    const color = colors[type] || colors.default;
+    // Size based on magnitude - earthquakes scale, others get fixed sizes
+    const size = type === 'earthquake' 
+        ? Math.min(16, Math.max(8, 6 + magnitude * 1.5)) 
+        : (type === 'wildfire' || type === 'hurricane' ? 14 : 10);
+    
+    return L.divIcon({
+        className: 'disaster-marker',
+        html: `<div style="
+            width: ${size}px;
+            height: ${size}px;
+            background: ${color};
+            border: 1px solid rgba(255,255,255,0.8);
+            transform: rotate(45deg);
+            box-shadow: 0 0 ${size/2}px ${color};
+        "></div>`,
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2]
+    });
+}
+
 // Update markers on the map
-function updateMarkers(activityData, allNews, mapLayers, getMonitorHotspots) {
+// Layer order: disasters (bottom) -> flights -> circles/news (top)
+function updateMarkers(activityData, allNews, mapLayers, getMonitorHotspots, disasters, flights, classifyAircraft, getAircraftArrow) {
     if (!map || !markersLayer) return;
     
     // Clear existing markers
     markersLayer.clearLayers();
     hotspotMarkers.clearLayers();
+    if (flightMarkers) flightMarkers.clearLayers();
     
+    // ===== LAYER 1: DISASTERS (BOTTOM) =====
+    // Add disaster markers (earthquakes, wildfires, floods, etc.)
+    if (disasters && disasters.length > 0 && mapLayers.earthquakes) {
+        disasters.forEach(disaster => {
+            if (disaster.lat && disaster.lon) {
+                const type = disaster.type || 'earthquake';
+                const magnitude = disaster.magnitude || 5;
+                const icon = createDisasterIcon(type, magnitude);
+                const marker = L.marker([disaster.lat, disaster.lon], { icon });
+                
+                const timeAgo = getTimeAgo(disaster.time);
+                const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+                const magText = type === 'earthquake' ? ` M${magnitude.toFixed(1)}` : '';
+                
+                marker.bindPopup(`
+                    <div class="map-popup">
+                        <div class="popup-title">${typeLabel}${magText}</div>
+                        <div class="popup-location">${escapeHtml(disaster.place || disaster.title || 'Unknown location')}</div>
+                        <div class="popup-meta">${disaster.depth ? `Depth: ${disaster.depth.toFixed(1)} km | ` : ''}${timeAgo}</div>
+                    </div>
+                `, { className: 'dark-popup' });
+                
+                hotspotMarkers.addLayer(marker);
+            }
+        });
+    }
+    
+    // ===== LAYER 2: FLIGHTS (MIDDLE) =====
+    // Add flight markers
+    if (flightMarkers && flights && flights.length > 0 && mapLayers.flights) {
+        // Limit to first 200 flights to avoid clutter
+        flights.slice(0, 200).forEach(flight => {
+            if (!flight.lat || !flight.lon) return;
+            
+            const type = classifyAircraft ? classifyAircraft(flight.callsign, flight.country) : 'commercial';
+            const arrow = getAircraftArrow ? getAircraftArrow(flight.heading) : '>';
+            
+            // Color by aircraft type
+            const colors = {
+                military: '#ff4444',
+                cargo: '#ffaa00', 
+                helicopter: '#44ff88',
+                commercial: '#4488ff'
+            };
+            const color = colors[type] || colors.commercial;
+            
+            const icon = L.divIcon({
+                className: 'flight-marker',
+                html: `<div style="
+                    color: ${color};
+                    font-size: 12px;
+                    font-weight: bold;
+                    text-shadow: 0 0 3px #000, 0 0 6px ${color};
+                    transform: rotate(${(flight.heading || 0) - 90}deg);
+                ">\u2708</div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+            
+            const marker = L.marker([flight.lat, flight.lon], { icon });
+            
+            const altitude = flight.altitude ? `${Math.round(flight.altitude * 3.281)} ft` : 'N/A';
+            const speed = flight.velocity ? `${Math.round(flight.velocity * 1.944)} kts` : 'N/A';
+            const icao = flight.icao24 || '';
+            const callsign = flight.callsign || icao;
+            const adsbUrl = icao ? `https://globe.adsbexchange.com/?icao=${icao}` : null;
+            
+            marker.bindPopup(`
+                <div class="map-popup">
+                    <div class="popup-title">${adsbUrl ? `<a href="${adsbUrl}" target="_blank" rel="noopener" class="flight-link">${escapeHtml(callsign)}</a>` : escapeHtml(callsign)}</div>
+                    <div class="popup-meta">${escapeHtml(flight.country || 'Unknown')}</div>
+                    <div class="popup-meta">Alt: ${altitude} | Speed: ${speed}</div>
+                    <div class="popup-meta">Type: ${type}</div>
+                    ${icao ? `<div class="popup-meta">ICAO: ${icao}</div>` : ''}
+                </div>
+            `, { className: 'dark-popup' });
+            
+            flightMarkers.addLayer(marker);
+        });
+    }
+    
+    // ===== LAYER 3: NEWS CIRCLES (TOP) =====
     // Add news activity markers - only for locations with actual news mentions and headlines
     Object.values(activityData).forEach(location => {
         // Skip locations with no mentions or no headlines
@@ -358,7 +547,7 @@ function updateMarkers(activityData, allNews, mapLayers, getMonitorHotspots) {
         const color = getMarkerColor(level);
         const icon = createMarkerIcon(color, location.count);
         
-        const marker = L.marker([location.lat, location.lon], { icon });
+        const marker = L.marker([location.lat, location.lon], { icon, zIndexOffset: 1000 });
         
         // Create popup content with clickable headlines
         const popupContent = `
@@ -410,7 +599,7 @@ function updateMarkers(activityData, allNews, mapLayers, getMonitorHotspots) {
                     iconAnchor: [10, 10]
                 });
                 
-                const marker = L.marker([hotspot.lat, hotspot.lon], { icon });
+                const marker = L.marker([hotspot.lat, hotspot.lon], { icon, zIndexOffset: 1000 });
                 marker.bindPopup(`
                     <div class="map-popup">
                         <div class="popup-title">${escapeHtml(hotspot.name)}</div>
@@ -438,6 +627,55 @@ function getHotspotsForView(view) {
         default: 
             return INTEL_HOTSPOTS || [];
     }
+}
+
+// Extract location from disaster title text
+function extractDisasterLocation(title) {
+    const lowerTitle = title.toLowerCase();
+    // Try to match known locations
+    for (const [keyword, coords] of Object.entries(LOCATION_COORDS)) {
+        if (matchesAsWord(lowerTitle, keyword.toLowerCase())) {
+            return { lat: coords.lat, lon: coords.lon, name: coords.name || keyword };
+        }
+    }
+    return null;
+}
+
+// Detect disaster type from title
+function detectDisasterType(title) {
+    const lower = title.toLowerCase();
+    if (/earthquake|seismic|quake/i.test(lower)) return 'earthquake';
+    if (/tsunami/i.test(lower)) return 'tsunami';
+    if (/hurricane|typhoon|cyclone/i.test(lower)) return 'hurricane';
+    if (/wildfire|fire|blaze|burn/i.test(lower)) return 'wildfire';
+    if (/flood|flooding/i.test(lower)) return 'flood';
+    if (/volcano|eruption|lava/i.test(lower)) return 'volcano';
+    return 'default';
+}
+
+// Add disaster alert markers to map (call after disasters are loaded)
+export function addDisasterMarkers(disasters) {
+    if (!map || !hotspotMarkers || !disasters || disasters.length === 0) return;
+    
+    disasters.forEach(disaster => {
+        const location = extractDisasterLocation(disaster.title);
+        if (location) {
+            const type = detectDisasterType(disaster.title);
+            const icon = createDisasterIcon(type, 5); // Default size
+            
+            const marker = L.marker([location.lat, location.lon], { icon });
+            marker.bindPopup(`
+                <div class="map-popup">
+                    <div class="popup-title">${disaster.isUrgent ? '[URGENT] ' : ''}${escapeHtml(disaster.source)}</div>
+                    <div class="popup-location">${escapeHtml(disaster.title.substring(0, 100))}</div>
+                    <div class="popup-meta">${getTimeAgo(disaster.pubDate)}</div>
+                    ${disaster.link ? `<a href="${disaster.link}" target="_blank" class="popup-link">View Details</a>` : ''}
+                </div>
+            `, { className: 'dark-popup' });
+            
+            hotspotMarkers.addLayer(marker);
+        }
+    });
 }
 
 // Legacy function stubs for compatibility

@@ -5,14 +5,14 @@ import { FEEDS, REGION_KEYWORDS, ALERT_KEYWORDS } from './constants.js';
 import { setStatus, escapeHtml } from './utils.js';
 import {
     fetchCategory, fetchMarkets, fetchSectors, fetchCommodities,
-    fetchEarthquakes, fetchCongressTrades, fetchWhaleTransactions,
+    fetchAllDisasters, fetchCongressTrades, fetchWhaleTransactions,
     fetchGovContracts, fetchAINews, fetchFedBalance, fetchPolymarket,
     fetchLayoffs, fetchSituationNews, fetchIntelFeed,
     fetchCyberThreats, fetchDisasters, fetchSocialTrends
 } from './data.js';
 import {
     renderGlobalMap, analyzeHotspotActivity, setMapView,
-    mapZoomIn, mapZoomOut, mapZoomReset, updateFlashback
+    mapZoomIn, mapZoomOut, mapZoomReset, updateFlashback, addDisasterMarkers
 } from './map.js';
 import {
     mapLayers, toggleLayer, toggleSatelliteLayer,
@@ -34,7 +34,7 @@ import {
 import {
     analyzeCorrelations, renderCorrelationEngine,
     analyzeNarratives, renderNarrativeTracker,
-    calculateMainCharacter
+    calculateMainCharacter, analyzeCrossConnections
 } from './intelligence.js';
 import {
     renderMonitorsList, openMonitorForm, closeMonitorForm,
@@ -315,6 +315,58 @@ function renderPinnedPanels() {
 // Expose to window
 window.togglePinPanel = togglePinPanel;
 
+// ========== PANEL EXPANSION ==========
+// Panels that should NOT be expandable
+const NON_EXPANDABLE_PANELS = ['map', 'live-news'];
+
+function togglePanelExpand(panelEl) {
+    if (!panelEl) return;
+    const panelId = panelEl.dataset.panel;
+    
+    // Don't allow expansion for map or live-news
+    if (NON_EXPANDABLE_PANELS.includes(panelId)) return;
+    
+    const contentGrid = panelEl.closest('.content-grid');
+    if (!contentGrid) return;
+    
+    const isExpanded = panelEl.classList.contains('panel-expanded');
+    
+    if (isExpanded) {
+        // Collapse
+        panelEl.classList.remove('panel-expanded');
+        contentGrid.classList.remove('has-expanded-panel');
+    } else {
+        // Collapse any other expanded panel first
+        contentGrid.querySelectorAll('.panel-expanded').forEach(p => {
+            p.classList.remove('panel-expanded');
+        });
+        // Expand this panel
+        panelEl.classList.add('panel-expanded');
+        contentGrid.classList.add('has-expanded-panel');
+    }
+}
+
+// Setup panel title click handlers
+function setupPanelExpansion() {
+    document.querySelectorAll('.content-grid .panel').forEach(panel => {
+        const panelId = panel.dataset.panel;
+        if (NON_EXPANDABLE_PANELS.includes(panelId)) return;
+        
+        const title = panel.querySelector('.panel-title');
+        if (title && !title.dataset.expandHandler) {
+            title.dataset.expandHandler = 'true';
+            title.addEventListener('click', (e) => {
+                // Don't expand if clicking a link inside title
+                if (e.target.closest('a')) return;
+                togglePanelExpand(panel);
+            });
+        }
+    });
+}
+
+// Expose to window
+window.togglePanelExpand = togglePanelExpand;
+
 // ========== COUNTDOWN TIMER ==========
 let countdownSeconds = 300; // 5 minutes
 let countdownInterval = null;
@@ -386,7 +438,12 @@ function setStatusWithErrors(text, hasErrors = false) {
 }
 
 // ========== TIME FILTER ==========
-let currentTimeFilter = 'all';
+let currentTimeFilter = '12h'; // Default to 12 hours
+
+// Export for use in map.js
+export function getCurrentTimeFilter() {
+    return currentTimeFilter;
+}
 
 function toggleTimeFilter() {
     const dropdown = document.getElementById('timeFilterDropdown');
@@ -395,6 +452,15 @@ function toggleTimeFilter() {
     }
 }
 
+// Time filter display names
+const TIME_FILTER_LABELS = {
+    'all': 'All Time',
+    '1h': '1 Hour',
+    '6h': '6 Hours',
+    '12h': '12 Hours',
+    '24h': '24 Hours'
+};
+
 function setTimeFilter(filter) {
     currentTimeFilter = filter;
     
@@ -402,6 +468,10 @@ function setTimeFilter(filter) {
     document.querySelectorAll('.time-option').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.time === filter);
     });
+    
+    // Update the main button text
+    const btn = document.getElementById('timeFilterBtn');
+    if (btn) btn.textContent = TIME_FILTER_LABELS[filter] || filter;
     
     // Close dropdown
     const dropdown = document.getElementById('timeFilterDropdown');
@@ -588,7 +658,7 @@ function initArticleClickHandler() {
 
 // Global state for fast updates
 let lastAllNews = [];
-let lastEarthquakes = [];
+let lastDisasters = [];
 let currentRegionFilter = 'all';
 
 // Region filter keywords
@@ -622,6 +692,23 @@ function setRegionFilter(region) {
         btn.classList.toggle('active', btn.dataset.region === region);
     });
     
+    // Update flights toggle button based on region
+    const flightsBtn = document.getElementById('flightsToggle');
+    if (flightsBtn) {
+        const isGlobal = region === 'all';
+        if (isGlobal) {
+            flightsBtn.textContent = 'Flights: Disabled';
+            flightsBtn.classList.remove('active');
+            flightsBtn.classList.add('disabled');
+            flightsBtn.title = 'Select a region to view flight data';
+        } else {
+            flightsBtn.classList.remove('disabled');
+            flightsBtn.textContent = mapLayers.flights ? 'Flights' : 'Flights: Off';
+            flightsBtn.classList.toggle('active', mapLayers.flights);
+            flightsBtn.title = 'Toggle Flights';
+        }
+    }
+    
     // Update map title
     const titleEl = document.getElementById('mapTitle');
     const regionNames = {
@@ -644,14 +731,14 @@ function setRegionFilter(region) {
 
 // Store extra news data for filtering
 let lastCyberThreats = [];
-let lastDisasters = [];
+let lastDisasterNews = [];
 let lastSocialTrends = [];
 let lastAINews = [];
 let lastLayoffs = [];
 let lastIntelFeed = [];
 
 // Re-render news panels with current filter
-function renderFilteredNews() {
+async function renderFilteredNews() {
     if (lastAllNews.length === 0) return;
     
     // Apply both region and time filters
@@ -685,8 +772,8 @@ function renderFilteredNews() {
     if (isPanelEnabled('cyber') && lastCyberThreats.length > 0) {
         renderCyberThreats(filterNewsByTime(filterNewsByRegion(lastCyberThreats, currentRegionFilter)));
     }
-    if (isPanelEnabled('disasters') && lastDisasters.length > 0) {
-        renderDisasters(filterNewsByTime(filterNewsByRegion(lastDisasters, currentRegionFilter)));
+    if (isPanelEnabled('disasters') && lastDisasterNews.length > 0) {
+        renderDisasters(filterNewsByTime(filterNewsByRegion(lastDisasterNews, currentRegionFilter)));
     }
     if (isPanelEnabled('social') && lastSocialTrends.length > 0) {
         renderSocialTrends(filterNewsByTime(filterNewsByRegion(lastSocialTrends, currentRegionFilter)));
@@ -704,16 +791,22 @@ function renderFilteredNews() {
     // Update map with filtered news
     if (isPanelEnabled('map')) {
         const activityData = analyzeHotspotActivity(filtered);
-        renderGlobalMap(
+        await renderGlobalMap(
             activityData,
-            lastEarthquakes,
+            lastDisasters,
             filtered,
             mapLayers,
             getMonitorHotspots,
             fetchFlightData,
             classifyAircraft,
-            getAircraftArrow
+            getAircraftArrow,
+            currentTimeFilter
         );
+        // Re-add disaster news markers if disasters are enabled (also filtered by time)
+        if (mapLayers.earthquakes && lastDisasterNews.length > 0) {
+            const filteredDisasterNews = filterNewsByTime(lastDisasterNews);
+            addDisasterMarkers(filteredDisasterNews);
+        }
     }
 
     // Pinned dashboard panels are clones; refresh them so they reflect the updated content.
@@ -729,14 +822,20 @@ async function refreshMapOnly() {
         const activityData = analyzeHotspotActivity(lastAllNews);
         await renderGlobalMap(
             activityData,
-            lastEarthquakes,
+            lastDisasters,
             lastAllNews,
             mapLayers,
             getMonitorHotspots,
             fetchFlightData,
             classifyAircraft,
-            getAircraftArrow
+            getAircraftArrow,
+            currentTimeFilter
         );
+        // Re-add disaster news markers if disasters are enabled (also filtered by time)
+        if (mapLayers.earthquakes && lastDisasterNews.length > 0) {
+            const filteredDisasterNews = filterNewsByTime(lastDisasterNews);
+            addDisasterMarkers(filteredDisasterNews);
+        }
     }
 }
 
@@ -744,6 +843,33 @@ async function refreshMapOnly() {
 window.setMapView = (mode) => setMapView(mode, refreshMapOnly);
 window.toggleLayer = (layer) => toggleLayer(layer, refreshMapOnly);
 window.toggleSatelliteLayer = () => toggleSatelliteLayer(refreshMapOnly);
+
+// Toggle map layer from header buttons
+window.toggleMapLayer = (layer) => {
+    // For flights, check if we're on global view
+    if (layer === 'flights') {
+        const currentRegion = document.querySelector('.region-btn.active')?.dataset?.region || 'all';
+        if (currentRegion === 'all') {
+            // Don't toggle on global view, show message
+            return;
+        }
+    }
+    
+    mapLayers[layer] = !mapLayers[layer];
+    
+    // Update button state
+    const btn = document.querySelector(`.layer-toggle-btn[data-layer="${layer}"]`);
+    if (btn) {
+        btn.classList.toggle('active', mapLayers[layer]);
+        // Update flights button text
+        if (layer === 'flights') {
+            btn.textContent = mapLayers[layer] ? 'Flights' : 'Flights: Off';
+        }
+    }
+    
+    // Refresh map
+    refreshMapOnly();
+};
 
 // Staged refresh - loads critical data first for faster perceived startup
 async function refreshAll() {
@@ -818,10 +944,10 @@ async function refreshAll() {
             isPanelEnabled('commodities') ? fetchCommodities() : Promise.resolve([]),
             isPanelEnabled('polymarket') ? fetchPolymarket() : Promise.resolve([]),
             isPanelEnabled('printer') ? fetchFedBalance() : Promise.resolve({ value: 0, change: 0, changePercent: 0, percentOfMax: 0 }),
-            isPanelEnabled('map') ? fetchEarthquakes() : Promise.resolve([])
+            isPanelEnabled('map') ? fetchAllDisasters() : Promise.resolve([])
         ]);
 
-        const [gov, commodities, polymarket, fedBalance, earthquakes] = await stage2Promise;
+        const [gov, commodities, polymarket, fedBalance, mapDisasters] = await stage2Promise;
 
         // Tag gov news with category
         gov.forEach(item => item.category = 'gov');
@@ -836,7 +962,7 @@ async function refreshAll() {
 
         // Store all news for region/time filtering
         lastAllNews = allNews;
-        lastEarthquakes = earthquakes;
+        lastDisasters = mapDisasters;
 
         // Apply the current filters for UI + notifications so popups match what's visible.
         const filteredForUi = filterNewsByTime(filterNewsByRegion(allNews, currentRegionFilter));
@@ -853,19 +979,20 @@ async function refreshAll() {
         // Desktop notifications only for alert-worthy NEW items
         checkForAlerts(newItems);
 
-        // Render map with earthquakes and shipping alert data
+        // Render map with disasters and shipping alert data
         if (isPanelEnabled('map')) {
             updateSplash('Rendering map...');
             const activityData = analyzeHotspotActivity(filteredForUi);
             await renderGlobalMap(
                 activityData,
-                earthquakes,
+                mapDisasters,
                 filteredForUi,
                 mapLayers,
                 getMonitorHotspots,
                 fetchFlightData,
                 classifyAircraft,
-                getAircraftArrow
+                getAircraftArrow,
+                currentTimeFilter
             );
         }
         if (isPanelEnabled('mainchar')) {
@@ -900,14 +1027,14 @@ async function refreshAll() {
             isPanelEnabled('social') ? fetchSocialTrends() : Promise.resolve([])
         ]);
 
-        const [congressTrades, whales, contracts, aiNews, layoffs, venezuelaNews, greenlandNews, intelFeed, cyberThreats, disasters, socialTrends] = await stage3Promise;
+        const [congressTrades, whales, contracts, aiNews, layoffs, venezuelaNews, greenlandNews, intelFeed, cyberThreats, disasterNews, socialTrends] = await stage3Promise;
 
         // Store for region filtering
         lastAINews = aiNews;
         lastLayoffs = layoffs;
         lastIntelFeed = intelFeed;
         lastCyberThreats = cyberThreats;
-        lastDisasters = disasters;
+        lastDisasterNews = disasterNews;
         lastSocialTrends = socialTrends;
 
         if (isPanelEnabled('congress')) renderCongressTrades(congressTrades);
@@ -917,7 +1044,14 @@ async function refreshAll() {
         if (isPanelEnabled('layoffs')) renderLayoffs(layoffs);
         if (isPanelEnabled('intel')) renderIntelFeed(intelFeed);
         if (isPanelEnabled('cyber')) renderCyberThreats(cyberThreats);
-        if (isPanelEnabled('disasters')) renderDisasters(disasters);
+        if (isPanelEnabled('disasters')) {
+            renderDisasters(disasterNews);
+            // Add disaster markers to map if map is enabled (filtered by time)
+            if (isPanelEnabled('map') && mapLayers.earthquakes) {
+                const filteredDisasterNews = filterNewsByTime(disasterNews);
+                addDisasterMarkers(filteredDisasterNews);
+            }
+        }
         if (isPanelEnabled('social')) renderSocialTrends(socialTrends);
         if (isPanelEnabled('venezuela')) {
             renderSituation('venezuelaPanel', 'venezuelaStatus', venezuelaNews, {
@@ -932,6 +1066,29 @@ async function refreshAll() {
                 subtitle: 'US-Denmark tensions over Arctic territory',
                 criticalKeywords: ['purchase', 'trump', 'military', 'takeover', 'independence', 'referendum']
             });
+        }
+        
+        // Cross-connection analysis after all data is loaded
+        if (isPanelEnabled('correlation')) {
+            // Fetch polymarket for cross-connections (if not already)
+            const polymarket = isPanelEnabled('polymarket') ? 
+                await (async () => { try { return await fetchPolymarket(); } catch { return []; } })() : [];
+            
+            const crossConnections = analyzeCrossConnections({
+                news: filteredForUi,
+                cyber: cyberThreats,
+                disasters: mapDisasters,
+                congress: congressTrades,
+                polymarket: polymarket,
+                whales: whales
+            });
+            
+            // Re-render correlation engine with cross-connections
+            const correlations = analyzeCorrelations(filteredForUi);
+            if (correlations) {
+                correlations.crossConnections = crossConnections;
+                renderCorrelationEngine(correlations);
+            }
         }
 
         // Render My Monitors panel with all news
@@ -970,30 +1127,33 @@ async function refreshAll() {
 // Expose refreshAll to window
 window.refreshAll = refreshAll;
 
-// Initialize scroll delay for panel content (800ms hover to enable scrolling)
+// Initialize scroll delay for panel content (1 second hover to enable scrolling)
 // Also allow scrolling page when mouse is near edges
 function initScrollDelay() {
     let hoverTimers = new Map();
     
     document.addEventListener('mouseenter', (e) => {
-        const panelContent = e.target.closest('.panel-content');
-        if (panelContent && !panelContent.classList.contains('scroll-enabled')) {
+        if (!e.target || typeof e.target.closest !== 'function') return;
+        // Check both panel-content and grid-scrollable elements
+        const scrollable = e.target.closest('.panel-content, .grid-scrollable');
+        if (scrollable && !scrollable.classList.contains('scroll-enabled')) {
             const timer = setTimeout(() => {
-                panelContent.classList.add('scroll-enabled');
-            }, 500);
-            hoverTimers.set(panelContent, timer);
+                scrollable.classList.add('scroll-enabled');
+            }, 1000);
+            hoverTimers.set(scrollable, timer);
         }
     }, true);
     
     document.addEventListener('mouseleave', (e) => {
-        const panelContent = e.target.closest('.panel-content');
-        if (panelContent) {
-            const timer = hoverTimers.get(panelContent);
+        if (!e.target || typeof e.target.closest !== 'function') return;
+        const scrollable = e.target.closest('.panel-content, .grid-scrollable');
+        if (scrollable) {
+            const timer = hoverTimers.get(scrollable);
             if (timer) {
                 clearTimeout(timer);
-                hoverTimers.delete(panelContent);
+                hoverTimers.delete(scrollable);
             }
-            panelContent.classList.remove('scroll-enabled');
+            scrollable.classList.remove('scroll-enabled');
         }
     }, true);
 }
@@ -1110,6 +1270,9 @@ function boot() {
     // Initialize pin buttons
     updatePinButtons();
     renderPinnedPanels();
+    
+    // Initialize panel expansion click handlers
+    setupPanelExpansion();
 
     // Update splash status
     const splashStatus = document.getElementById('splashStatus');

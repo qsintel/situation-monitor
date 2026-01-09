@@ -408,25 +408,23 @@ export function saveLivestreamUrl() {
 }
 
 // Render stream embed for current selection
-function renderStreamEmbed(stream) {
+function renderStreamEmbed(stream, index = 0) {
     const originParam = (typeof location !== 'undefined' && location.origin)
         ? `&origin=${encodeURIComponent(location.origin)}`
         : '';
 
-    // Default to privacy-enhanced embeds (avoids consent prompts in some browsers).
+    // Use youtube-nocookie.com - YouTube's privacy-enhanced mode that bypasses some tracking protection
     const ytHost = 'https://www.youtube-nocookie.com';
 
     // YouTube live stream by channelId
-    // Try embedding the /channel/ID/live page directly - this often works better than /embed/live_stream
     if (stream.type === 'youtube-live-channel' && stream.channelId) {
         const livePageUrl = `https://www.youtube.com/channel/${stream.channelId}/live`;
-        // Use the regular embed with live_stream parameter as primary, but also try resolving via proxy
-        const embedUrl = `${ytHost}/embed/live_stream?channel=${stream.channelId}&autoplay=1&mute=1&playsinline=1&rel=0${originParam}`;
-        // We attach data-channel-id so we can opportunistically swap this to a concrete /embed/<videoId>
-        // when the channel /live page can be resolved via CORS proxy.
+        // Use privacy-enhanced embed with minimal parameters
+        const embedUrl = `${ytHost}/embed/live_stream?channel=${stream.channelId}&autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1`;
+        
         return `
             <div class="stream-embed-wrapper" data-yt-channel-id="${stream.channelId}">
-                <iframe data-yt-live-channel-id="${stream.channelId}" src="${embedUrl}" title="${stream.name || 'Live stream'}" loading="lazy" referrerpolicy="origin-when-cross-origin" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen onerror="this.src='${livePageUrl}'"></iframe>
+                <iframe data-yt-live-channel-id="${stream.channelId}" src="${embedUrl}" title="${stream.name || 'Live stream'}" loading="eager" referrerpolicy="no-referrer" frameborder="0" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
                 <div class="stream-fallback">
                     <span>Stream not loading?</span>
                     <a href="${livePageUrl}" target="_blank" rel="noopener" class="stream-fallback-link">Watch on YouTube ↗</a>
@@ -439,7 +437,7 @@ function renderStreamEmbed(stream) {
     if (stream.type === 'youtube-page' && stream.pageUrl) {
         return `
             <div class="stream-embed-wrapper">
-                <iframe src="${stream.pageUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" referrerpolicy="origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                <iframe src="${stream.pageUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" referrerpolicy="no-referrer-when-downgrade" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
                 <div class="stream-fallback">
                     <span>Stream not loading?</span>
                     <a href="${stream.pageUrl}" target="_blank" rel="noopener" class="stream-fallback-link">Watch on YouTube ↗</a>
@@ -462,8 +460,8 @@ function renderStreamEmbed(stream) {
     
     // Legacy YouTube video ID
     if (stream.type === 'youtube' && stream.videoId) {
-        const embedUrl = `${ytHost}/embed/${stream.videoId}?autoplay=1&mute=1&playsinline=1&rel=0${originParam}`;
-        return `<iframe src="${embedUrl}" title="${stream.name || 'YouTube stream'}" loading="lazy" referrerpolicy="origin-when-cross-origin" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+        const embedUrl = `${ytHost}/embed/${stream.videoId}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1`;
+        return `<iframe src="${embedUrl}" title="${stream.name || 'YouTube stream'}" loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
     }
     
     // External URL
@@ -659,9 +657,12 @@ export function updateLivestreamEmbed() {
 
     const streams = getStreams();
     
-    // If no streams selected, auto-select first one
+    // If no streams selected, auto-select first 4 (France 24, DW, NBC, Reuters)
     if (selectedStreams.size === 0 && streams.length > 0) {
-        selectedStreams.add(0);
+        const autoSelectCount = Math.min(4, streams.length);
+        for (let i = 0; i < autoSelectCount; i++) {
+            selectedStreams.add(i);
+        }
         updateStreamSelectorUI();
     }
     

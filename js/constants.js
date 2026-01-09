@@ -33,18 +33,23 @@ export const PANELS = {
 export const NON_DRAGGABLE_PANELS = ['map', 'tbpn'];
 
 // Live news streams - prefer stable channelId live embeds when possible
+// Default order: France 24, DW, NBC, Reuters (as requested)
 export const NEWS_STREAMS = [
-    { name: 'Sky News', type: 'youtube-live-channel', channelId: 'UCoMdktPbSTixAyNGwb-UYkQ' },
-    { name: 'Al Jazeera', type: 'youtube-live-channel', channelId: 'UCNye-wNBqNL5ZzHSJj3l8Bg' },
     { name: 'France 24', type: 'youtube-live-channel', channelId: 'UCQfwfsi5VrQ8yKZ-UWmAEFg' },
     { name: 'DW News', type: 'youtube-live-channel', channelId: 'UCknLrEdhRCp1aegoMqRaCZg' },
-    { name: 'Euronews', type: 'youtube-live-channel', channelId: 'UCSrZ3UV4jOidv8ppoVuvW9Q' },
     { name: 'NBC News NOW', type: 'youtube-live-channel', channelId: 'UCeY0bbntWzzVIaj2z3QigXg' },
+    { name: 'Reuters', type: 'youtube-live-channel', channelId: 'UChqUTb7kYRX8-EiaN3XFrSQ' },
+    { name: 'Al Jazeera', type: 'youtube-live-channel', channelId: 'UCNye-wNBqNL5ZzHSJj3l8Bg' },
+    { name: 'Sky News', type: 'youtube-live-channel', channelId: 'UCoMdktPbSTixAyNGwb-UYkQ' },
+    { name: 'Euronews', type: 'youtube-live-channel', channelId: 'UCSrZ3UV4jOidv8ppoVuvW9Q' },
     { name: 'ABC News', type: 'youtube-live-channel', channelId: 'UCBi2mrWuNuyYy4gbM6fU18Q' },
     { name: 'CBS News', type: 'youtube-live-channel', channelId: 'UC8p1vwvWtl6T73JiExfWs1g' },
-    { name: 'Reuters', type: 'youtube-live-channel', channelId: 'UChqUTb7kYRX8-EiaN3XFrSQ' },
     { name: 'AP News', type: 'youtube-live-channel', channelId: 'UC52X5wxOL_s5yw0dQk7NtgA' },
-    { name: 'BBC News', type: 'youtube-live-channel', channelId: 'UC16niRr50-MSBwiO3YDb3RA' }
+    { name: 'BBC News', type: 'youtube-live-channel', channelId: 'UC16niRr50-MSBwiO3YDb3RA' },
+    { name: 'WION', type: 'youtube-live-channel', channelId: 'UC_gUM8rL-Lrg6O3adPW9K1g' },
+    { name: 'CGTN', type: 'youtube-live-channel', channelId: 'UCgrNz-aDmcr2uuto8_DL2jg' },
+    { name: 'NHK World', type: 'youtube-live-channel', channelId: 'UCQ3Ods3SAsLKPJ0D-MfjN2A' },
+    { name: 'Arirang', type: 'youtube-live-channel', channelId: 'UCu_2e6hsAqrGbJMmUPwk8Jw' }
 ];
 
 // Map zoom settings
@@ -52,10 +57,12 @@ export const MAP_ZOOM_MIN = 1;
 export const MAP_ZOOM_MAX = 4;
 export const MAP_ZOOM_STEP = 0.5;
 
-// CORS proxies for fetching external data
+// CORS proxies for fetching external data (multiple for redundancy)
 export const CORS_PROXIES = [
     'https://corsproxy.io/?',
-    'https://api.allorigins.win/raw?url='
+    'https://api.allorigins.win/raw?url=',
+    'https://cors-anywhere.herokuapp.com/',
+    'https://thingproxy.freeboard.io/fetch/'
 ];
 
 // Geopolitical alert keywords
@@ -66,18 +73,35 @@ export const ALERT_KEYWORDS = [
     'assassination', 'terrorist', 'hostage', 'evacuation'
 ];
 
-// RSS Feed sources
+// RSS Feed sources - prioritizing reliable feeds that work well with RSS-to-JSON APIs
 export const FEEDS = {
     politics: [
-        // Global / Major Wire Services
+        // === TIER 1: Most Reliable Global News (rarely blocked/fail) ===
         { name: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', region: 'global' },
+        { name: 'BBC Top', url: 'https://feeds.bbci.co.uk/news/rss.xml', region: 'global' },
         { name: 'NPR News', url: 'https://feeds.npr.org/1001/rss.xml', region: 'us' },
+        { name: 'NPR World', url: 'https://feeds.npr.org/1004/rss.xml', region: 'global' },
+        { name: 'CNN Top', url: 'https://rss.cnn.com/rss/edition.rss', region: 'global' },
+        { name: 'CNN World', url: 'https://rss.cnn.com/rss/edition_world.rss', region: 'global' },
+        { name: 'NY Times', url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml', region: 'global' },
+        { name: 'Washington Post', url: 'https://feeds.washingtonpost.com/rss/world', region: 'global' },
         { name: 'Guardian World', url: 'https://www.theguardian.com/world/rss', region: 'global' },
+        { name: 'Guardian US', url: 'https://www.theguardian.com/us-news/rss', region: 'us' },
+        { name: 'ABC News', url: 'https://abcnews.go.com/abcnews/internationalheadlines', region: 'global' },
+        { name: 'CBS News', url: 'https://www.cbsnews.com/latest/rss/world', region: 'global' },
+        { name: 'NBC News', url: 'https://feeds.nbcnews.com/nbcnews/public/world', region: 'global' },
+        { name: 'Fox News', url: 'https://moxie.foxnews.com/google-publisher/world.xml', region: 'global' },
+        
+        // === TIER 1: Wire Services ===
         { name: 'Reuters World', url: 'https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best', region: 'global' },
         { name: 'AP News', url: 'https://rsshub.app/apnews/topics/world-news', region: 'global' },
-        { name: 'AFP', url: 'https://www.afp.com/en/rss-feeds', region: 'global' },
+        { name: 'UPI', url: 'https://rss.upi.com/news/top_news.rss', region: 'global' },
         
         // === EUROPE ===
+        { name: 'DW News', url: 'https://rss.dw.com/rdf/rss-en-all', region: 'europe', topics: ['germany'] },
+        { name: 'France 24', url: 'https://www.france24.com/en/rss', region: 'europe', topics: ['france'] },
+        { name: 'Euronews', url: 'https://www.euronews.com/rss', region: 'europe' },
+        
         // Nordic Countries
         { name: 'NRK (Norway)', url: 'https://www.nrk.no/toppsaker.rss', region: 'europe', topics: ['norway'] },
         { name: 'SVT (Sweden)', url: 'https://www.svt.se/nyheter/rss.xml', region: 'europe', topics: ['sweden'] },
@@ -91,9 +115,7 @@ export const FEEDS = {
         { name: 'LRT (Lithuania)', url: 'https://www.lrt.lt/rss', region: 'europe', topics: ['lithuania', 'vilnius'] },
         { name: 'Delfi Baltic', url: 'https://www.delfi.ee/rss', region: 'europe', topics: ['estonia', 'baltic'] },
         
-        // Western Europe
-        { name: 'DW News', url: 'https://rss.dw.com/rdf/rss-en-all', region: 'europe', topics: ['germany'] },
-        { name: 'France 24', url: 'https://www.france24.com/en/rss', region: 'europe', topics: ['france'] },
+        // Western Europe (additional sources)
         { name: 'The Local DE', url: 'https://www.thelocal.de/feed/', region: 'europe', topics: ['germany'] },
         { name: 'The Local FR', url: 'https://www.thelocal.fr/feed/', region: 'europe', topics: ['france'] },
         { name: 'The Local ES', url: 'https://www.thelocal.es/feed/', region: 'europe', topics: ['spain'] },
@@ -109,18 +131,38 @@ export const FEEDS = {
         { name: 'TVP World', url: 'https://tvpworld.com/rss/news.xml', region: 'europe', topics: ['poland'] },
         { name: 'Hungary Today', url: 'https://hungarytoday.hu/feed/', region: 'europe', topics: ['hungary'] },
         { name: 'Prague Morning', url: 'https://praguemorning.cz/feed/', region: 'europe', topics: ['czechia'] },
+        { name: 'Slovakia Today', url: 'https://spectator.sme.sk/rss', region: 'europe', topics: ['slovakia'] },
         { name: 'Romania Insider', url: 'https://www.romania-insider.com/feed', region: 'europe', topics: ['romania'] },
         { name: 'Bulgaria News', url: 'https://bnr.bg/en/rss', region: 'europe', topics: ['bulgaria'] },
+        { name: 'Slovenia Times', url: 'https://sloveniatimes.com/rss', region: 'europe', topics: ['slovenia'] },
         
         // Balkans
         { name: 'N1 Balkans', url: 'https://n1info.com/feed/', region: 'europe', topics: ['balkans', 'serbia'] },
         { name: 'Balkan Insight', url: 'https://balkaninsight.com/feed/', region: 'europe', topics: ['balkans'] },
+        { name: 'Albanian Daily', url: 'https://albaniandailynews.com/rss', region: 'europe', topics: ['albania'] },
+        { name: 'Kosovo Online', url: 'https://www.kosovo-online.com/rss', region: 'europe', topics: ['kosovo'] },
+        { name: 'Macedonia Info', url: 'https://meta.mk/en/feed/', region: 'europe', topics: ['north-macedonia'] },
+        { name: 'Sarajevo Times', url: 'https://sarajevotimes.com/feed/', region: 'europe', topics: ['bosnia'] },
+        { name: 'Montenegro News', url: 'https://mina.news/en/rss', region: 'europe', topics: ['montenegro'] },
+        { name: 'Croatia Week', url: 'https://www.croatiaweek.com/feed/', region: 'europe', topics: ['croatia'] },
+        
+        // Iberia & Mediterranean
+        { name: 'Portugal News', url: 'https://www.theportugalnews.com/rss', region: 'europe', topics: ['portugal'] },
+        { name: 'Cyprus Mail', url: 'https://cyprus-mail.com/feed/', region: 'europe', topics: ['cyprus'] },
+        { name: 'Malta Today', url: 'https://www.maltatoday.com.mt/rss/', region: 'europe', topics: ['malta'] },
+        
+        // Smaller European states
+        { name: 'Luxembourg Times', url: 'https://luxtimes.lu/rss', region: 'europe', topics: ['luxembourg'] },
+        { name: 'Monaco Tribune', url: 'https://www.monacomatin.mc/rss/', region: 'europe', topics: ['monaco'] },
         
         // Ukraine & Eastern
         { name: 'Kyiv Independent', url: 'https://kyivindependent.com/feed/', region: 'europe', topics: ['ukraine'] },
         { name: 'Ukrainska Pravda', url: 'https://www.pravda.com.ua/rss/', region: 'europe', topics: ['ukraine'] },
+        { name: 'Belarus Digest', url: 'https://belarusdigest.com/feed/', region: 'europe', topics: ['belarus'] },
         { name: 'Moldova.org', url: 'https://www.moldova.org/en/feed/', region: 'europe', topics: ['moldova'] },
         { name: 'Civil Georgia', url: 'https://civil.ge/feed', region: 'europe', topics: ['georgia'] },
+        { name: 'Azerbaijan News', url: 'https://report.az/en/rss/', region: 'europe', topics: ['azerbaijan'] },
+        { name: 'Armenia News', url: 'https://armenpress.am/eng/rss/', region: 'europe', topics: ['armenia'] },
         { name: 'JAM News', url: 'https://jam-news.net/feed/', region: 'europe', topics: ['caucasus', 'georgia', 'armenia', 'azerbaijan'] },
         
         // === RUSSIA & CENTRAL ASIA ===
@@ -136,10 +178,23 @@ export const FEEDS = {
         { name: 'Times of Israel', url: 'https://www.timesofisrael.com/feed/', region: 'mideast', topics: ['israel'] },
         { name: 'Jerusalem Post', url: 'https://www.jpost.com/rss/rssfeedsfrontpage.aspx', region: 'mideast', topics: ['israel'] },
         { name: 'Iran Intl', url: 'https://www.iranintl.com/en/rss', region: 'mideast', topics: ['iran'] },
+        { name: 'Tehran Times', url: 'https://www.tehrantimes.com/rss', region: 'mideast', topics: ['iran'] },
         { name: 'Al-Monitor', url: 'https://www.al-monitor.com/rss', region: 'mideast', topics: ['middle-east'] },
         { name: 'Arab News', url: 'https://www.arabnews.com/rss.xml', region: 'mideast', topics: ['saudi', 'gulf'] },
+        { name: 'Saudi Gazette', url: 'https://saudigazette.com.sa/rss', region: 'mideast', topics: ['saudi'] },
         { name: 'Gulf News', url: 'https://gulfnews.com/rss', region: 'mideast', topics: ['uae', 'gulf'] },
+        { name: 'Khaleej Times', url: 'https://www.khaleejtimes.com/rss', region: 'mideast', topics: ['uae', 'gulf'] },
+        { name: 'Qatar Tribune', url: 'https://www.qatar-tribune.com/rss', region: 'mideast', topics: ['qatar', 'gulf'] },
+        { name: 'Kuwait Times', url: 'https://www.kuwaittimes.com/feed/', region: 'mideast', topics: ['kuwait', 'gulf'] },
+        { name: 'Bahrain News', url: 'https://www.bna.bh/en/rss/', region: 'mideast', topics: ['bahrain', 'gulf'] },
+        { name: 'Oman Observer', url: 'https://www.omanobserver.om/rss/', region: 'mideast', topics: ['oman', 'gulf'] },
         { name: 'Daily Star Lebanon', url: 'https://www.dailystar.com.lb/RSS.aspx', region: 'mideast', topics: ['lebanon'] },
+        { name: 'Jordan Times', url: 'https://jordantimes.com/rss', region: 'mideast', topics: ['jordan'] },
+        { name: 'Iraq News', url: 'https://www.iraqinews.com/feed/', region: 'mideast', topics: ['iraq'] },
+        { name: 'Syria Direct', url: 'https://syriadirect.org/feed/', region: 'mideast', topics: ['syria'] },
+        { name: 'Yemen Post', url: 'https://yemenpost.net/feed/', region: 'mideast', topics: ['yemen'] },
+        { name: 'Daily Sabah', url: 'https://www.dailysabah.com/rss', region: 'mideast', topics: ['turkey'] },
+        { name: 'Hurriyet Daily', url: 'https://www.hurriyetdailynews.com/rss', region: 'mideast', topics: ['turkey'] },
         
         // === ASIA-PACIFIC ===
         { name: 'SCMP', url: 'https://www.scmp.com/rss/91/feed', region: 'asia', topics: ['china', 'hong-kong'] },
@@ -155,32 +210,103 @@ export const FEEDS = {
         { name: 'VN Express', url: 'https://e.vnexpress.net/rss/news.rss', region: 'asia', topics: ['vietnam'] },
         { name: 'Bangkok Post', url: 'https://www.bangkokpost.com/rss/data/headlines.xml', region: 'asia', topics: ['thailand'] },
         { name: 'Rappler', url: 'https://www.rappler.com/feed/', region: 'asia', topics: ['philippines'] },
+        { name: 'Manila Bulletin', url: 'https://mb.com.ph/rss', region: 'asia', topics: ['philippines'] },
         { name: 'Jakarta Post', url: 'https://www.thejakartapost.com/rss', region: 'asia', topics: ['indonesia'] },
+        { name: 'Tempo Indonesia', url: 'https://en.tempo.co/rss/index/', region: 'asia', topics: ['indonesia'] },
         { name: 'Hindustan Times', url: 'https://www.hindustantimes.com/rss/topnews/rssfeed.xml', region: 'asia', topics: ['india'] },
         { name: 'NDTV India', url: 'https://feeds.feedburner.com/NdtvNews-TopStories', region: 'asia', topics: ['india'] },
+        { name: 'Times of India', url: 'https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms', region: 'asia', topics: ['india'] },
         { name: 'Dawn Pakistan', url: 'https://www.dawn.com/feeds/home', region: 'asia', topics: ['pakistan'] },
+        { name: 'Express Tribune PK', url: 'https://tribune.com.pk/feed/', region: 'asia', topics: ['pakistan'] },
         { name: 'Tolo News', url: 'https://tolonews.com/rss', region: 'asia', topics: ['afghanistan'] },
+        { name: 'Kathmandu Post', url: 'https://kathmandupost.com/rss', region: 'asia', topics: ['nepal'] },
+        { name: 'Daily Star BD', url: 'https://www.thedailystar.net/rss.xml', region: 'asia', topics: ['bangladesh'] },
+        { name: 'Daily FT Sri Lanka', url: 'https://www.ft.lk/rss', region: 'asia', topics: ['sri-lanka'] },
+        { name: 'Myanmar Now', url: 'https://myanmar-now.org/en/feed/', region: 'asia', topics: ['myanmar'] },
+        { name: 'Khmer Times', url: 'https://www.khmertimeskh.com/feed/', region: 'asia', topics: ['cambodia'] },
+        { name: 'Vientiane Times', url: 'https://www.vientianetimes.org.la/rss', region: 'asia', topics: ['laos'] },
+        { name: 'Borneo Bulletin', url: 'https://borneobulletin.com.bn/feed/', region: 'asia', topics: ['brunei'] },
+        { name: 'Free Malaysia Today', url: 'https://www.freemalaysiatoday.com/feed/', region: 'asia', topics: ['malaysia'] },
+        { name: 'Mongolian News', url: 'https://montsame.mn/en/rss', region: 'asia', topics: ['mongolia'] },
+        { name: 'Astana Times', url: 'https://astanatimes.com/feed/', region: 'russia', topics: ['kazakhstan'] },
+        { name: 'Akipress Kyrgyzstan', url: 'https://akipress.com/rss/', region: 'russia', topics: ['kyrgyzstan'] },
+        { name: 'Asia-Plus Tajikistan', url: 'https://asiaplustj.info/en/rss', region: 'russia', topics: ['tajikistan'] },
+        { name: 'Turkmenistan Chronical', url: 'https://en.hronikatm.com/feed/', region: 'russia', topics: ['turkmenistan'] },
+        { name: 'Kun.uz Uzbekistan', url: 'https://kun.uz/en/rss', region: 'russia', topics: ['uzbekistan'] },
         
         // === AFRICA ===
+        // North Africa
         { name: 'All Africa', url: 'https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf', region: 'africa', topics: ['africa'] },
+        { name: 'Egypt Independent', url: 'https://www.egyptindependent.com/feed/', region: 'africa', topics: ['egypt'] },
+        { name: 'Egypt Today', url: 'https://www.egypttoday.com/RSS', region: 'africa', topics: ['egypt'] },
+        { name: 'Libya Herald', url: 'https://libyaherald.com/feed/', region: 'africa', topics: ['libya'] },
+        { name: 'Morocco World News', url: 'https://www.moroccoworldnews.com/feed/', region: 'africa', topics: ['morocco'] },
+        { name: 'Algeria Press', url: 'https://www.aps.dz/en/component/obrss/algeria-politics', region: 'africa', topics: ['algeria'] },
+        { name: 'Tunisia Live', url: 'https://www.tunisia-live.net/feed/', region: 'africa', topics: ['tunisia'] },
+        
+        // East Africa
+        { name: 'Nation Kenya', url: 'https://nation.africa/rss', region: 'africa', topics: ['kenya'] },
+        { name: 'Daily Monitor UG', url: 'https://www.monitor.co.ug/rss', region: 'africa', topics: ['uganda'] },
+        { name: 'Ethiopian Reporter', url: 'https://www.thereporterethiopia.com/feed/', region: 'africa', topics: ['ethiopia'] },
+        { name: 'Citizen Tanzania', url: 'https://www.thecitizen.co.tz/rss', region: 'africa', topics: ['tanzania'] },
+        { name: 'New Times Rwanda', url: 'https://www.newtimes.co.rw/rss', region: 'africa', topics: ['rwanda'] },
+        { name: 'Sudan Tribune', url: 'https://sudantribune.com/feed/', region: 'africa', topics: ['sudan'] },
+        
+        // West Africa
+        { name: 'Punch Nigeria', url: 'https://punchng.com/feed/', region: 'africa', topics: ['nigeria'] },
+        { name: 'Vanguard NG', url: 'https://www.vanguardngr.com/feed/', region: 'africa', topics: ['nigeria'] },
+        { name: 'Ghana Web', url: 'https://www.ghanaweb.com/GhanaHomePage/rss/', region: 'africa', topics: ['ghana'] },
+        { name: 'Senegal Infos', url: 'https://www.seneweb.com/rss.xml', region: 'africa', topics: ['senegal'] },
+        { name: 'Ecofin Agency', url: 'https://www.ecofinagency.com/feed/', region: 'africa', topics: ['africa', 'economy'] },
+        
+        // Southern Africa
         { name: 'News24 SA', url: 'https://feeds.news24.com/articles/news24/TopStories/rss', region: 'africa', topics: ['south-africa'] },
         { name: 'Daily Maverick', url: 'https://www.dailymaverick.co.za/feed/', region: 'africa', topics: ['south-africa'] },
-        { name: 'Nation Kenya', url: 'https://nation.africa/rss', region: 'africa', topics: ['kenya'] },
-        { name: 'Punch Nigeria', url: 'https://punchng.com/feed/', region: 'africa', topics: ['nigeria'] },
-        { name: 'Egypt Independent', url: 'https://www.egyptindependent.com/feed/', region: 'africa', topics: ['egypt'] },
+        { name: 'IOL SA', url: 'https://www.iol.co.za/rss/', region: 'africa', topics: ['south-africa'] },
+        { name: 'Zimbabwe Independent', url: 'https://www.theindependent.co.zw/feed/', region: 'africa', topics: ['zimbabwe'] },
+        { name: 'Namibian', url: 'https://www.namibian.com.na/rss', region: 'africa', topics: ['namibia'] },
+        { name: 'Botswana Guardian', url: 'https://www.botswanaguardian.co.bw/rss', region: 'africa', topics: ['botswana'] },
         
         // === AMERICAS ===
+        // North America
         { name: 'Globe & Mail', url: 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/', region: 'us', topics: ['canada'] },
         { name: 'CBC Canada', url: 'https://www.cbc.ca/cmlink/rss-topstories', region: 'us', topics: ['canada'] },
+        { name: 'National Post', url: 'https://nationalpost.com/feed', region: 'us', topics: ['canada'] },
         { name: 'El Universal MX', url: 'https://www.eluniversal.com.mx/rss.xml', region: 'us', topics: ['mexico'] },
+        { name: 'Milenio MX', url: 'https://www.milenio.com/rss', region: 'us', topics: ['mexico'] },
+        
+        // Central America & Caribbean
+        { name: 'Jamaica Gleaner', url: 'https://jamaica-gleaner.com/feed', region: 'us', topics: ['jamaica', 'caribbean'] },
+        { name: 'Trinidad Express', url: 'https://trinidadexpress.com/rss/', region: 'us', topics: ['trinidad', 'caribbean'] },
+        { name: 'Prensa Libre GT', url: 'https://www.prensalibre.com/feed/', region: 'us', topics: ['guatemala'] },
+        { name: 'La Prensa HN', url: 'https://www.laprensa.hn/rss/', region: 'us', topics: ['honduras'] },
+        { name: 'La Prensa Panama', url: 'https://www.prensa.com/rss/', region: 'us', topics: ['panama'] },
+        { name: 'Tico Times', url: 'https://ticotimes.net/feed', region: 'us', topics: ['costa-rica'] },
+        { name: 'Cuba Headlines', url: 'https://cubaheadlines.com/rss', region: 'us', topics: ['cuba', 'caribbean'] },
+        
+        // South America
         { name: 'Buenos Aires Herald', url: 'https://www.batimes.com.ar/feed/', region: 'us', topics: ['argentina'] },
+        { name: 'Clarin AR', url: 'https://www.clarin.com/rss/', region: 'us', topics: ['argentina'] },
         { name: 'Brazil Report', url: 'https://brazilian.report/feed/', region: 'us', topics: ['brazil'] },
+        { name: 'Folha Brasil', url: 'https://feeds.folha.uol.com.br/internacional/en/rss091.xml', region: 'us', topics: ['brazil'] },
         { name: 'Merco Press', url: 'https://en.mercopress.com/rss', region: 'us', topics: ['latin-america'] },
+        { name: 'El Comercio Peru', url: 'https://elcomercio.pe/arcio/rss/', region: 'us', topics: ['peru'] },
+        { name: 'El Mercurio Chile', url: 'https://www.emol.com/rss/', region: 'us', topics: ['chile'] },
+        { name: 'El Tiempo Colombia', url: 'https://www.eltiempo.com/rss/portada.xml', region: 'us', topics: ['colombia'] },
+        { name: 'El Nacional VE', url: 'https://www.elnacional.com/feed/', region: 'us', topics: ['venezuela'] },
+        { name: 'El Universo EC', url: 'https://www.eluniverso.com/rss/', region: 'us', topics: ['ecuador'] },
+        { name: 'ABC Paraguay', url: 'https://www.abc.com.py/rss/', region: 'us', topics: ['paraguay'] },
+        { name: 'El Pais Uruguay', url: 'https://www.elpais.com.uy/rss/', region: 'us', topics: ['uruguay'] },
+        { name: 'Los Tiempos Bolivia', url: 'https://www.lostiempos.com/rss.xml', region: 'us', topics: ['bolivia'] },
         
         // === OCEANIA ===
         { name: 'ABC Australia', url: 'https://www.abc.net.au/news/feed/51120/rss.xml', region: 'asia', topics: ['australia'] },
+        { name: 'Sydney Morning Herald', url: 'https://www.smh.com.au/rss/feed.xml', region: 'asia', topics: ['australia'] },
         { name: 'NZ Herald', url: 'https://www.nzherald.co.nz/arc/outboundfeeds/rss/', region: 'asia', topics: ['new-zealand'] },
-        { name: 'RNZ New Zealand', url: 'https://www.rnz.co.nz/rss/national.xml', region: 'asia', topics: ['new-zealand'] }
+        { name: 'RNZ New Zealand', url: 'https://www.rnz.co.nz/rss/national.xml', region: 'asia', topics: ['new-zealand'] },
+        { name: 'Fiji Times', url: 'https://www.fijitimes.com/feed/', region: 'asia', topics: ['fiji', 'pacific'] },
+        { name: 'Samoa Observer', url: 'https://www.samoaobserver.ws/rss', region: 'asia', topics: ['samoa', 'pacific'] },
+        { name: 'PNG Post-Courier', url: 'https://postcourier.com.pg/feed/', region: 'asia', topics: ['papua-new-guinea', 'pacific'] }
     ],
     tech: [
         { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },

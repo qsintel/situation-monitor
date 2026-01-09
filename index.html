@@ -46,14 +46,14 @@
             </div>
             <input type="text" id="globalSearch" class="search-box" placeholder="Search..." oninput="handleGlobalSearch(this.value)">
             <div class="time-filter-wrapper">
-                <button class="header-btn time-filter-btn" onclick="toggleTimeFilter()" title="Filter by time">
-                    🕐
+                <button class="header-btn time-filter-btn" id="timeFilterBtn" onclick="toggleTimeFilter()" title="Filter by time">
+                    12 Hours
                 </button>
                 <div class="time-filter-dropdown" id="timeFilterDropdown">
-                    <button class="time-option active" data-time="all" onclick="setTimeFilter('all')">All Time</button>
+                    <button class="time-option" data-time="all" onclick="setTimeFilter('all')">All Time</button>
                     <button class="time-option" data-time="1h" onclick="setTimeFilter('1h')">Last Hour</button>
                     <button class="time-option" data-time="6h" onclick="setTimeFilter('6h')">Last 6 Hours</button>
-                    <button class="time-option" data-time="12h" onclick="setTimeFilter('12h')">Last 12 Hours</button>
+                    <button class="time-option active" data-time="12h" onclick="setTimeFilter('12h')">Last 12 Hours</button>
                     <button class="time-option" data-time="24h" onclick="setTimeFilter('24h')">Last 24 Hours</button>
                 </div>
             </div>
@@ -141,6 +141,9 @@
                             <button class="region-btn" data-region="mideast" onclick="setRegionFilter('mideast')">ME</button>
                             <button class="region-btn" data-region="russia" onclick="setRegionFilter('russia')">RU</button>
                             <button class="region-btn" data-region="ukraine" onclick="setRegionFilter('ukraine')">UA</button>
+                            <span class="layer-divider">|</span>
+                            <button class="layer-toggle-btn active" data-layer="earthquakes" onclick="toggleMapLayer('earthquakes')" title="Toggle Disasters">Disasters</button>
+                            <button class="layer-toggle-btn" id="flightsToggle" data-layer="flights" onclick="toggleMapLayer('flights')" title="Select a region to view flight data">Flights: Disabled</button>
                         </div>
                     </div>
                     <div class="panel-content map-container" id="mapPanel"></div>
@@ -311,6 +314,7 @@
                                 <div class="intel-section"><div class="intel-header">Momentum</div><div id="momentumSignals"><div class="loading-msg">Analyzing...</div></div></div>
                                 <div class="intel-section"><div class="intel-header">Cross-Source</div><div id="crossSourceCorrelations"><div class="loading-msg">Analyzing...</div></div></div>
                                 <div class="intel-section"><div class="intel-header">Predictive</div><div id="predictiveSignals"><div class="loading-msg">Analyzing...</div></div></div>
+                                <div class="intel-section"><div class="intel-header">Data Links</div><div id="crossConnections"><div class="loading-msg">Connecting data sources...</div></div></div>
                             </div>
                         </div>
                     </section>

@@ -175,51 +175,58 @@ export function loadTileImage(url) {
 }
 
 // Fetch flight data from OpenSky Network API
+// When bounds are provided (region view), fetch only that region
+// When no bounds (should not happen on global), return empty
 export async function fetchFlightData(bounds = null) {
     const now = Date.now();
 
-    // Return cached data if still valid
-    if (flightDataCache && (now - flightDataTimestamp) < FLIGHT_CACHE_DURATION) {
+    // If no bounds provided (global view), don't fetch flights
+    if (!bounds) {
+        flightDataCache = [];
+        return [];
+    }
+
+    // Return cached data if still valid AND bounds match
+    const boundsKey = `${bounds.north}-${bounds.south}-${bounds.west}-${bounds.east}`;
+    if (flightDataCache && flightDataCache._boundsKey === boundsKey && (now - flightDataTimestamp) < FLIGHT_CACHE_DURATION) {
         return flightDataCache;
     }
 
     try {
-        let url = 'https://opensky-network.org/api/states/all';
-
-        if (bounds) {
-            url += `?lamin=${bounds.south}&lomin=${bounds.west}&lamax=${bounds.north}&lomax=${bounds.east}`;
-        }
-
+        const url = `https://opensky-network.org/api/states/all?lamin=${bounds.south}&lomin=${bounds.west}&lamax=${bounds.north}&lomax=${bounds.east}`;
         const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            const flights = parseFlightData(data);
+            flights._boundsKey = boundsKey; // Store bounds key for cache validation
+            flightDataCache = flights;
+            flightDataTimestamp = now;
+            return flights;
         }
-
-        const data = await response.json();
-
-        // Parse OpenSky response format
-        const flights = (data.states || []).slice(0, 500).map(s => ({
-            icao24: s[0],
-            callsign: (s[1] || '').trim(),
-            country: s[2],
-            lon: s[5],
-            lat: s[6],
-            altitude: s[7] || s[13],
-            onGround: s[8],
-            velocity: s[9],
-            heading: s[10],
-            verticalRate: s[11],
-            squawk: s[14]
-        })).filter(f => f.lat && f.lon && !f.onGround);
-
-        flightDataCache = flights;
-        flightDataTimestamp = now;
-
-        return flights;
+        
+        return flightDataCache || [];
     } catch (error) {
         console.error('Failed to fetch flight data:', error);
         return flightDataCache || [];
     }
+}
+
+// Parse OpenSky response format
+function parseFlightData(data) {
+    return (data.states || []).slice(0, 500).map(s => ({
+        icao24: s[0],
+        callsign: (s[1] || '').trim(),
+        country: s[2],
+        lon: s[5],
+        lat: s[6],
+        altitude: s[7] || s[13],
+        onGround: s[8],
+        velocity: s[9],
+        heading: s[10],
+        verticalRate: s[11],
+        squawk: s[14]
+    })).filter(f => f.lat && f.lon && !f.onGround);
 }
 
 // Classify aircraft type based on callsign patterns

@@ -86,40 +86,63 @@ export async function fetchWithProxy(url) {
     throw new Error('All proxies failed');
 }
 
-// Fetch RSS feed using rss2json API as primary method
+// Fetch RSS feed using multiple RSS-to-JSON APIs for redundancy
 export async function fetchFeedViaJson(source) {
     // Check cache first
     const cacheKey = 'json:' + source.url;
     const cached = getCached(cacheKey);
     if (cached) return cached;
     
-    try {
-        const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`;
-        const response = await fetchWithTimeout(apiUrl, { timeout: 5000 });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+    // Multiple RSS-to-JSON services for redundancy
+    const rssApis = [
+        url => `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`,
+        url => `https://api.factmaven.com/xml-to-json/?xml=${encodeURIComponent(url)}`,
+        url => `https://rss2json.prantik.me/api?url=${encodeURIComponent(url)}`
+    ];
+    
+    for (const apiBuilder of rssApis) {
+        try {
+            const apiUrl = apiBuilder(source.url);
+            const response = await fetchWithTimeout(apiUrl, { timeout: 6000 });
+            
+            if (!response.ok) continue;
+
+            const data = await response.json();
+            
+            // Handle different API response formats
+            let rawItems = [];
+            if (data.status === 'ok' && data.items) {
+                rawItems = data.items;
+            } else if (data.rss?.channel?.item) {
+                rawItems = Array.isArray(data.rss.channel.item) ? data.rss.channel.item : [data.rss.channel.item];
+            } else if (data.channel?.item) {
+                rawItems = Array.isArray(data.channel.item) ? data.channel.item : [data.channel.item];
+            } else if (Array.isArray(data)) {
+                rawItems = data;
+            }
+            
+            if (rawItems.length === 0) continue;
+
+            const items = rawItems.slice(0, 8).map(item => ({
+                source: source.name,
+                title: (item.title || 'No title').trim(),
+                link: item.link || item.url || '',
+                pubDate: item.pubDate || item.published || item.date || '',
+                description: item.description || item.summary || '',
+                isAlert: hasAlertKeyword(item.title || ''),
+                region: source.region || null,
+                topics: source.topics || []
+            }));
+            
+            setCache(cacheKey, items);
+            return items;
+        } catch (e) {
+            continue; // Try next API
         }
-
-        const data = await response.json();
-        if (data.status !== 'ok' || !data.items) return [];
-
-        const items = data.items.slice(0, 5).map(item => ({
-            source: source.name,
-            title: (item.title || 'No title').trim(),
-            link: item.link || '',
-            pubDate: item.pubDate || '',
-            isAlert: hasAlertKeyword(item.title || ''),
-            region: source.region || null,
-            topics: source.topics || []
-        }));
-        
-        setCache(cacheKey, items);
-        return items;
-    } catch (e) {
-        console.log(`rss2json failed for ${source.name}: ${e.message}`);
-        return null; // Signal to try XML fallback
     }
+    
+    console.log(`All JSON APIs failed for ${source.name}, will try XML...`);
+    return null; // Signal to try XML fallback
 }
 
 // Check for alert keywords
@@ -615,38 +638,96 @@ export async function fetchFedBalance() {
     };
 }
 
-// Fetch Polymarket data from Gamma API
+// Fetch Polymarket data from multiple API endpoints with fallbacks
 export async function fetchPolymarket() {
-    try {
-        // Use Polymarket's public Gamma API for popular markets
-        const response = await fetchWithTimeout(
-            'https://gamma-api.polymarket.com/markets?closed=false&order=volume24hr&ascending=false&limit=15',
-            { timeout: 8000 }
-        );
-        
-        if (!response.ok) throw new Error('Polymarket API error');
-        
-        const markets = await response.json();
-        
-        return markets.filter(m => m.outcomePrices).map(market => {
-            const prices = JSON.parse(market.outcomePrices);
-            const yesPrice = parseFloat(prices[0]) * 100;
+    const endpoints = [
+        // Primary: Gamma API
+        'https://gamma-api.polymarket.com/markets?closed=false&order=volume24hr&ascending=false&limit=15',
+        // Fallback: CLOB API 
+        'https://clob.polymarket.com/markets?closed=false&limit=15'
+    ];
+    
+    for (const endpoint of endpoints) {
+        try {
+            const response = await fetchWithTimeout(endpoint, { timeout: 10000 });
             
-            return {
-                question: market.question || 'Unknown',
-                yes: Math.round(yesPrice),
-                no: Math.round(100 - yesPrice),
-                volume: market.volume24hr || market.volume || 0,
-                id: market.id
-            };
-        }).slice(0, 12);
-    } catch (error) {
-        console.error('Error fetching Polymarket:', error);
-        // Return sample data as fallback
-        return [
-            { question: 'Market data temporarily unavailable', yes: 50, no: 50, volume: 0 }
-        ];
+            if (!response.ok) continue;
+            
+            const markets = await response.json();
+            
+            // Handle different API response formats
+            const marketList = Array.isArray(markets) ? markets : (markets.data || markets.markets || []);
+            
+            const parsed = marketList.filter(m => m.outcomePrices || m.outcomes).map(market => {
+                let yesPrice = 50;
+                
+                if (market.outcomePrices) {
+                    try {
+                        const prices = typeof market.outcomePrices === 'string' 
+                            ? JSON.parse(market.outcomePrices) 
+                            : market.outcomePrices;
+                        yesPrice = parseFloat(prices[0]) * 100;
+                    } catch (e) {}
+                } else if (market.outcomes && market.outcomes[0]) {
+                    yesPrice = parseFloat(market.outcomes[0].price || 0.5) * 100;
+                }
+                
+                return {
+                    question: market.question || market.title || 'Unknown',
+                    yes: Math.round(yesPrice),
+                    no: Math.round(100 - yesPrice),
+                    volume: market.volume24hr || market.volume || 0,
+                    id: market.id || market.condition_id,
+                    slug: market.slug || market.market_slug || null,
+                    // Event slug is needed for the correct URL - markets belong to events
+                    eventSlug: (market.events && market.events[0] && market.events[0].slug) || null
+                };
+            }).slice(0, 12);
+            
+            if (parsed.length > 0) {
+                console.log(`Polymarket: Got ${parsed.length} markets from ${endpoint}`);
+                return parsed;
+            }
+        } catch (error) {
+            console.warn(`Polymarket endpoint failed: ${endpoint}`, error.message);
+            continue;
+        }
     }
+    
+    // All endpoints failed - try via CORS proxy as last resort
+    try {
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent('https://gamma-api.polymarket.com/markets?closed=false&order=volume24hr&ascending=false&limit=15')}`;
+        const response = await fetchWithTimeout(proxyUrl, { timeout: 12000 });
+        
+        if (response.ok) {
+            const markets = await response.json();
+            const parsed = markets.filter(m => m.outcomePrices).map(market => {
+                const prices = JSON.parse(market.outcomePrices);
+                const yesPrice = parseFloat(prices[0]) * 100;
+                return {
+                    question: market.question || 'Unknown',
+                    yes: Math.round(yesPrice),
+                    no: Math.round(100 - yesPrice),
+                    volume: market.volume24hr || market.volume || 0,
+                    id: market.id,
+                    slug: market.slug || market.market_slug || null,
+                    eventSlug: (market.events && market.events[0] && market.events[0].slug) || null
+                };
+            }).slice(0, 12);
+            
+            if (parsed.length > 0) {
+                console.log(`Polymarket: Got ${parsed.length} markets via proxy`);
+                return parsed;
+            }
+        }
+    } catch (proxyError) {
+        console.warn('Polymarket proxy fallback also failed:', proxyError.message);
+    }
+    
+    console.error('All Polymarket endpoints failed');
+    return [
+        { question: 'Market data temporarily unavailable - check connection', yes: 50, no: 50, volume: 0 }
+    ];
 }
 
 // Fetch earthquake data from USGS
@@ -657,8 +738,10 @@ export async function fetchEarthquakes() {
 
         return data.features.map(f => ({
             id: f.id,
+            type: 'earthquake',
             magnitude: f.properties.mag,
             place: f.properties.place,
+            title: `M${f.properties.mag} - ${f.properties.place}`,
             time: new Date(f.properties.time),
             lat: f.geometry.coordinates[1],
             lon: f.geometry.coordinates[0],
@@ -668,6 +751,80 @@ export async function fetchEarthquakes() {
         console.error('Error fetching earthquakes:', error);
         return [];
     }
+}
+
+// Fetch natural disasters from NASA EONET API (wildfires, storms, floods, volcanoes)
+export async function fetchNaturalDisasters() {
+    try {
+        // Get events from the last 30 days
+        const response = await fetchWithTimeout('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=100', { timeout: 10000 });
+        const data = await response.json();
+
+        // Map EONET categories to our disaster types
+        const categoryMap = {
+            'wildfires': 'wildfire',
+            'volcanoes': 'volcano',
+            'severeStorms': 'hurricane',
+            'floods': 'flood',
+            'seaLakeIce': 'flood',
+            'earthquakes': 'earthquake', // EONET also has earthquakes
+            'drought': 'drought',
+            'dustHaze': 'dust',
+            'landslides': 'landslide'
+        };
+
+        return data.events.map(event => {
+            // Get the most recent geometry (location)
+            const geo = event.geometry[event.geometry.length - 1];
+            const coords = geo.coordinates;
+            
+            // Determine disaster type from category
+            const categoryId = event.categories[0]?.id || 'unknown';
+            const type = categoryMap[categoryId] || 'default';
+
+            return {
+                id: event.id,
+                type: type,
+                title: event.title,
+                place: event.title,
+                magnitude: 5, // Default magnitude for sizing
+                time: new Date(geo.date),
+                lat: coords[1],
+                lon: coords[0],
+                source: 'NASA EONET',
+                link: event.link
+            };
+        }).filter(d => d.lat && d.lon);
+    } catch (error) {
+        console.error('Error fetching natural disasters:', error);
+        return [];
+    }
+}
+
+// Combined function to fetch all disasters (earthquakes + EONET)
+export async function fetchAllDisasters() {
+    const [earthquakes, otherDisasters] = await Promise.all([
+        fetchEarthquakes(),
+        fetchNaturalDisasters()
+    ]);
+    
+    // Combine and deduplicate (EONET may have some earthquakes too)
+    const seen = new Set();
+    const combined = [...earthquakes];
+    
+    for (const disaster of otherDisasters) {
+        // Skip EONET earthquakes since USGS is more detailed
+        if (disaster.type === 'earthquake') continue;
+        
+        // Simple dedup by approximate location
+        const key = `${disaster.type}-${Math.round(disaster.lat)}-${Math.round(disaster.lon)}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            combined.push(disaster);
+        }
+    }
+    
+    return combined;
 }
 
 // Fetch layoffs data from news sources

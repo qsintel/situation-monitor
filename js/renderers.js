@@ -3,6 +3,32 @@
 import { timeAgo, getRelativeTime, escapeHtml } from './utils.js';
 import { isPanelEnabled } from './panels.js';
 
+// Sources that publish in non-English languages (need translate button)
+const NON_ENGLISH_SOURCES = new Set([
+    'NRK (Norway)', 'SVT (Sweden)', 'DR (Denmark)', 'YLE (Finland)', 
+    'Delfi Baltic', 'El Universal MX', 'Milenio MX', 'Prensa Libre GT',
+    'La Prensa HN', 'La Prensa Panama', 'Clarin AR', 'Folha Brasil',
+    'El Comercio Peru', 'El Mercurio Chile', 'El Tiempo Colombia',
+    'El Nacional VE', 'El Universo EC', 'ABC Paraguay', 'El Pais Uruguay',
+    'Los Tiempos Bolivia', 'Ukrainska Pravda', 'TASS', 'Senegal Infos',
+    'LRT (Lithuania)', 'Vientiane Times', 'Akipress Kyrgyzstan',
+    'Asia-Plus Tajikistan', 'Kun.uz Uzbekistan', 'Tehran Times'
+]);
+
+// Check if source might be non-English (by name patterns or known list)
+function isNonEnglishSource(sourceName) {
+    if (NON_ENGLISH_SOURCES.has(sourceName)) return true;
+    // Also check for common non-English patterns
+    const lower = sourceName.toLowerCase();
+    return /\b(el|la|los|las|le|les|der|die|das)\b/.test(lower) ||
+           lower.includes('pravda') || lower.includes('izvestia');
+}
+
+// Generate Google Translate URL for an article
+function getTranslateUrl(articleUrl) {
+    return `https://translate.google.com/translate?sl=auto&tl=en&u=${encodeURIComponent(articleUrl)}`;
+}
+
 // Render news items
 export function renderNews(items, panelId, countId) {
     const panel = document.getElementById(panelId);
@@ -16,13 +42,41 @@ export function renderNews(items, panelId, countId) {
         return;
     }
 
-    panel.innerHTML = items.map(item => `
-        <div class="item ${item.isAlert ? 'alert' : ''}">
-            <div class="item-source">${item.source}${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}</div>
-            <a class="item-title" href="${item.link}" target="_blank">${item.title}</a>
-            <div class="item-time">${timeAgo(item.pubDate)}</div>
-        </div>
-    `).join('');
+    // Sort by pubDate, newest first
+    const sortedItems = [...items].sort((a, b) => {
+        const dateA = a.pubDate ? new Date(a.pubDate) : new Date(0);
+        const dateB = b.pubDate ? new Date(b.pubDate) : new Date(0);
+        return dateB - dateA;
+    });
+
+    panel.innerHTML = sortedItems.map(item => {
+        const needsTranslate = isNonEnglishSource(item.source);
+        const translateBtn = needsTranslate 
+            ? `<a class="translate-btn" href="${getTranslateUrl(item.link)}" target="_blank" title="Translate to English">T</a>`
+            : '';
+        
+        // Encode share text and URLs - format: headline, article link, then "shared via" monitor link
+        const shareTextFull = `${item.title}\n\n${item.link}\n\nshared via https://qsintel.github.io/situation-monitor/`;
+        const shareTextEncoded = encodeURIComponent(shareTextFull);
+        const shareTitle = encodeURIComponent(item.title);
+        const shareUrl = encodeURIComponent(item.link);
+        
+        return `
+            <div class="item ${item.isAlert ? 'alert' : ''}">
+                <div class="item-source">${item.source}${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}${translateBtn}</div>
+                <a class="item-title" href="${item.link}" target="_blank">${item.title}</a>
+                <div class="item-footer">
+                    <div class="item-time">${timeAgo(item.pubDate)}</div>
+                    <div class="share-buttons">
+                        <a href="https://twitter.com/intent/tweet?text=${shareTextEncoded}" target="_blank" rel="noopener" class="share-btn share-x" title="Share on X">𝕏</a>
+                        <a href="https://www.facebook.com/sharer/sharer.php?u=${shareUrl}&quote=${shareTextEncoded}" target="_blank" rel="noopener" class="share-btn share-fb" title="Share on Facebook">f</a>
+                        <a href="https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}" target="_blank" rel="noopener" class="share-btn share-li" title="Share on LinkedIn">in</a>
+                        <a href="https://www.reddit.com/submit?url=${shareUrl}&title=${shareTitle}" target="_blank" rel="noopener" class="share-btn share-reddit" title="Share on Reddit">r</a>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
 
     if (count) count.textContent = items.length;
 }
@@ -75,7 +129,7 @@ export function renderHeatmap(sectors) {
         return;
     }
 
-    panel.innerHTML = '<div class="heatmap">' + sectors.map(s => {
+    panel.innerHTML = '<div class="heatmap-duration">Daily Change</div><div class="heatmap">' + sectors.map(s => {
         let colorClass = 'up-0';
         const c = s.change;
         if (c >= 2) colorClass = 'up-3';
@@ -107,7 +161,7 @@ export function renderCommodities(commodities) {
         return;
     }
 
-    panel.innerHTML = commodities.map(m => {
+    panel.innerHTML = '<div class="commodities-duration">Daily Change</div>' + commodities.map(m => {
         const changeClass = m.change > 0 ? 'up' : m.change < 0 ? 'down' : '';
         const changeText = `${m.change > 0 ? '+' : ''}${m.change.toFixed(2)}%`;
         const priceDisplay = m.price?.toFixed(2);
@@ -146,17 +200,29 @@ export function renderPolymarket(markets) {
         return '$' + v.toFixed(0);
     };
 
-    panel.innerHTML = markets.map(m => `
-        <div class="prediction-item">
-            <div>
-                <div class="prediction-question">${m.question}</div>
-                <div class="prediction-volume">Vol: ${formatVolume(m.volume)}</div>
+    panel.innerHTML = markets.map(m => {
+        // Polymarket URL: prefer event slug (correct format), fallback to market slug, then search
+        let marketUrl;
+        if (m.eventSlug) {
+            marketUrl = `https://polymarket.com/event/${m.eventSlug}`;
+        } else if (m.slug) {
+            marketUrl = `https://polymarket.com/event/${m.slug}`;
+        } else {
+            marketUrl = `https://polymarket.com/markets?_q=${encodeURIComponent(m.question.slice(0, 50))}`;
+        }
+        return `
+        <a href="${marketUrl}" target="_blank" rel="noopener" class="prediction-item-link">
+            <div class="prediction-item">
+                <div>
+                    <div class="prediction-question">${m.question}</div>
+                    <div class="prediction-volume">Vol: ${formatVolume(m.volume)}</div>
+                </div>
+                <div class="prediction-odds">
+                    <span class="prediction-yes">${m.yes}%</span>
+                </div>
             </div>
-            <div class="prediction-odds">
-                <span class="prediction-yes">${m.yes}%</span>
-            </div>
-        </div>
-    `).join('');
+        </a>
+    `}).join('');
 
     if (count) count.textContent = markets.length;
 }
@@ -302,16 +368,19 @@ export function renderGovContracts(contracts) {
         return '$' + v.toFixed(0);
     };
 
-    panel.innerHTML = contracts.map(c => `
+    panel.innerHTML = contracts.map(c => {
+        const sourceUrl = c.link || (c.id ? `https://www.usaspending.gov/award/${c.id}` : 'https://www.usaspending.gov');
+        return `
         <div class="contract-item">
             <div class="contract-agency">${c.agency}</div>
             <div class="contract-desc">${c.description.substring(0, 100)}${c.description.length > 100 ? '...' : ''}</div>
             <div class="contract-meta">
                 <span class="contract-vendor">${c.vendor}</span>
                 <span class="contract-value">${formatValue(c.amount)}</span>
+                <a href="${sourceUrl}" target="_blank" rel="noopener" class="contract-source-link" title="View source">🔗</a>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 
     if (count) count.textContent = contracts.length;
 }
@@ -603,7 +672,8 @@ export function renderNewsTicker(allNews) {
         return;
     }
 
-    tickerTrack.innerHTML = trendingStories.map(group => {
+    // Build the ticker content once
+    const tickerContent = trendingStories.map(group => {
         const item = group.representative;
         const isTrending = group.count >= 2;
         const sourceCount = group.count > 1 ? ` (${group.count} sources)` : '';
@@ -615,8 +685,14 @@ export function renderNewsTicker(allNews) {
         `;
     }).join('<span class="ticker-separator">•</span>');
     
-    // Duplicate content for seamless loop
-    tickerTrack.innerHTML += tickerTrack.innerHTML;
+    // Duplicate content for seamless infinite scroll
+    // The animation scrolls from 0% to -50%, so we need two copies
+    tickerTrack.innerHTML = tickerContent + '<span class="ticker-separator">•</span>' + tickerContent;
+    
+    // Reset animation to ensure seamless scroll from start
+    tickerTrack.style.animation = 'none';
+    tickerTrack.offsetHeight; // Trigger reflow
+    tickerTrack.style.animation = 'ticker-scroll 60s linear infinite';
 }
 
 // Render Cyber Threats panel

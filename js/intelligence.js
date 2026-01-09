@@ -119,7 +119,7 @@ export function analyzeCorrelations(allNews) {
 
     results.crossSourceCorrelations.sort((a, b) => b.sourceCount - a.sourceCount);
 
-    // Predictive Signals
+    // Predictive Signals - Clear, actionable insights based on pattern analysis
     CORRELATION_TOPICS.forEach(topic => {
         const count = topicCounts[topic.id] || 0;
         const sources = topicSources[topic.id] ? topicSources[topic.id].size : 0;
@@ -129,19 +129,26 @@ export function analyzeCorrelations(allNews) {
         if (score >= 15) {
             const confidence = Math.min(95, Math.round(score * 1.5));
             let prediction = '';
+            let reasoning = '';
 
             if (topic.id === 'tariffs' && count >= 4) {
-                prediction = 'Market volatility likely in next 24-48h';
+                prediction = 'Market volatility expected';
+                reasoning = `${count} tariff mentions across ${sources} sources. Trade tensions typically move markets within 24-48h.`;
             } else if (topic.id === 'fed-rates') {
-                prediction = 'Expect increased financial sector coverage';
+                prediction = 'Financial sector focus';
+                reasoning = `Fed rate coverage increasing (+${delta} in 10min). Expect bank/bond market reactions.`;
             } else if (topic.id.includes('china') || topic.id.includes('russia')) {
-                prediction = 'Geopolitical escalation narrative forming';
+                prediction = 'Geopolitical escalation';
+                reasoning = `${count} mentions from ${sources} outlets signals coordinated narrative build-up.`;
             } else if (topic.id === 'layoffs') {
-                prediction = 'Employment concerns may dominate news cycle';
+                prediction = 'Employment concerns rising';
+                reasoning = `Tech sector layoffs trending. May impact consumer sentiment and tech stocks.`;
             } else if (topic.category === 'Conflict') {
-                prediction = 'Breaking developments likely within hours';
+                prediction = 'Breaking developments likely';
+                reasoning = `Conflict coverage surging (+${delta}). Multiple outlets tracking = high news velocity.`;
             } else {
-                prediction = 'Topic gaining mainstream traction';
+                prediction = 'Story gaining momentum';
+                reasoning = `${count} mentions, ${sources} sources, +${delta} in 10min = mainstream pickup likely.`;
             }
 
             results.predictiveSignals.push({
@@ -151,6 +158,7 @@ export function analyzeCorrelations(allNews) {
                 score,
                 confidence,
                 prediction,
+                reasoning,
                 level: confidence >= 70 ? 'high' : confidence >= 50 ? 'medium' : 'low',
                 headlines: topicHeadlines[topic.id] || []
             });
@@ -183,18 +191,27 @@ export function renderCorrelationEngine(correlations) {
     const emergingEl = document.getElementById('emergingPatterns');
     if (emergingEl) {
         if (correlations.emergingPatterns.length > 0) {
-            emergingEl.innerHTML = correlations.emergingPatterns.slice(0, 4).map(p => `
+            emergingEl.innerHTML = correlations.emergingPatterns.slice(0, 4).map((p, idx) => `
                 <div class="correlation-item ${p.level}">
                     <div class="correlation-item-header">
                         <span class="correlation-topic">${p.name}</span>
-                        <span class="correlation-score ${p.level}">${p.count} mentions</span>
+                        <button class="correlation-score ${p.level} clickable-mentions" data-pattern-idx="${idx}" title="Click to see headlines">${p.count} mentions</button>
                     </div>
                     <div class="correlation-meta">${p.category} • ${p.sources.length} sources</div>
                     <div class="correlation-sources">
                         ${p.sources.slice(0, 4).map(s => `<span class="correlation-source-tag">${s}</span>`).join('')}
                     </div>
+                    <div class="correlation-headlines-list hidden" data-for="pattern-${idx}">
+                        ${(p.headlines || []).slice(0, 5).map(h => `
+                            <div class="correlation-headline">
+                                <a href="${h.link || '#'}" target="_blank">${h.title.substring(0, 80)}${h.title.length > 80 ? '...' : ''}</a>
+                                <span class="headline-source">${h.source || ''}</span>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
             `).join('');
+            // Click handlers are managed via event delegation in initCorrelationClickHandlers()
         } else {
             emergingEl.innerHTML = '<div class="no-correlations">No emerging patterns detected</div>';
         }
@@ -209,11 +226,11 @@ export function renderCorrelationEngine(correlations) {
                     <div class="correlation-item-header">
                         <span class="correlation-topic">${m.name}</span>
                         <span class="momentum-indicator ${m.momentum}">
-                            ${m.momentum === 'surging' ? '🚀' : m.momentum === 'rising' ? '📈' : '➡️'}
+                            ${m.momentum === 'surging' ? '++' : m.momentum === 'rising' ? '+' : '~'}
                             ${m.momentum.toUpperCase()}
                         </span>
                     </div>
-                    <div class="correlation-meta">${m.category} • ${m.current} now (+${m.delta} in 10m)</div>
+                    <div class="correlation-meta">${m.category} | ${m.current} now (+${m.delta} in 10m)</div>
                     ${m.headlines.length > 0 ? `
                         <div class="correlation-headlines">
                             ${m.headlines.slice(0, 2).map(h => `
@@ -234,18 +251,27 @@ export function renderCorrelationEngine(correlations) {
     const crossEl = document.getElementById('crossSourceCorrelations');
     if (crossEl) {
         if (correlations.crossSourceCorrelations.length > 0) {
-            crossEl.innerHTML = correlations.crossSourceCorrelations.slice(0, 4).map(c => `
+            crossEl.innerHTML = correlations.crossSourceCorrelations.slice(0, 4).map((c, idx) => `
                 <div class="correlation-item ${c.level}">
                     <div class="correlation-item-header">
                         <span class="correlation-topic">${c.name}</span>
-                        <span class="correlation-score ${c.level}">${c.sourceCount} sources</span>
+                        <button class="correlation-score ${c.level} clickable-sources" data-cross-idx="${idx}" title="Click to see headlines">${c.sourceCount} sources</button>
                     </div>
                     <div class="correlation-meta">${c.category} • Multi-outlet coverage</div>
                     <div class="correlation-sources">
                         ${c.sources.slice(0, 5).map(s => `<span class="correlation-source-tag">${s}</span>`).join('')}
                     </div>
+                    <div class="correlation-headlines-list hidden" data-for="cross-${idx}">
+                        ${(c.headlines || []).slice(0, 5).map(h => `
+                            <div class="correlation-headline">
+                                <a href="${h.link || '#'}" target="_blank">${(h.title || '').substring(0, 80)}${(h.title || '').length > 80 ? '...' : ''}</a>
+                                <span class="headline-source">${h.source || ''}</span>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
             `).join('');
+            // Click handlers are managed via event delegation in initCorrelationClickHandlers()
         } else {
             crossEl.innerHTML = '<div class="no-correlations">No cross-source correlations</div>';
         }
@@ -258,21 +284,37 @@ export function renderCorrelationEngine(correlations) {
             predictEl.innerHTML = correlations.predictiveSignals.slice(0, 4).map(p => `
                 <div class="correlation-item ${p.level}">
                     <div class="correlation-item-header">
-                        <span class="correlation-topic">${p.name}</span>
-                        <span class="correlation-score ${p.level}">${p.confidence}%</span>
+                        <span class="correlation-topic">${p.prediction}</span>
+                        <span class="correlation-score ${p.level}">${p.confidence}% likely</span>
                     </div>
-                    <div class="correlation-meta">${p.prediction}</div>
+                    <div class="predictive-topic">${p.name} • ${p.category}</div>
+                    <div class="predictive-reasoning">${p.reasoning || ''}</div>
                     <div class="prediction-confidence">
                         <div class="confidence-bar">
                             <div class="confidence-fill ${p.level}" style="width: ${p.confidence}%"></div>
                         </div>
-                        <span class="confidence-label">confidence</span>
                     </div>
                 </div>
             `).join('');
         } else {
             predictEl.innerHTML = '<div class="no-correlations">Gathering data for predictions...</div>';
         }
+    }
+    
+    // Render Cross-Connections (data source links)
+    const connectEl = document.getElementById('crossConnections');
+    if (connectEl && correlations.crossConnections && correlations.crossConnections.length > 0) {
+        connectEl.innerHTML = correlations.crossConnections.map(c => `
+            <div class="correlation-item ${c.severity}">
+                <div class="correlation-item-header">
+                    <span class="connection-icon">${c.icon}</span>
+                    <span class="correlation-topic">${c.title}</span>
+                </div>
+                <div class="correlation-meta">${c.detail}</div>
+            </div>
+        `).join('');
+    } else if (connectEl) {
+        connectEl.innerHTML = '<div class="no-correlations">Analyzing cross-data patterns...</div>';
     }
 }
 
@@ -499,6 +541,120 @@ export function calculateMainCharacter(allNews) {
     return sorted;
 }
 
+// Cross-connect analysis - find relationships between different data sources
+export function analyzeCrossConnections(data) {
+    const { news = [], cyber = [], disasters = [], congress = [], polymarket = [], whales = [] } = data;
+    const connections = [];
+    
+    // 1. Congress trades → News correlation
+    // Find if congress members are trading stocks that are in the news
+    if (congress.length > 0 && news.length > 0) {
+        const newsText = news.map(n => (n.title || '').toLowerCase()).join(' ');
+        congress.forEach(trade => {
+            const ticker = (trade.ticker || '').toLowerCase();
+            const company = (trade.company || trade.name || '').toLowerCase();
+            if (ticker && newsText.includes(ticker)) {
+                connections.push({
+                    type: 'congress-news',
+                    title: `${trade.name} ${trade.action} ${trade.ticker}`,
+                    detail: `Congress member trading stock that's currently in the news`,
+                    severity: 'elevated',
+                    icon: '[CONGRESS]'
+                });
+            }
+        });
+    }
+    
+    // 2. Cyber threats → Geopolitical news
+    // If cyber attacks mention a country also in geopolitical news
+    if (cyber.length > 0 && news.length > 0) {
+        const countries = ['russia', 'china', 'iran', 'north korea', 'ukraine'];
+        const newsText = news.map(n => (n.title || '').toLowerCase()).join(' ');
+        cyber.forEach(threat => {
+            const threatText = (threat.title || '').toLowerCase();
+            countries.forEach(country => {
+                if (threatText.includes(country) && newsText.includes(country)) {
+                    connections.push({
+                        type: 'cyber-geopolitical',
+                        title: `Cyber activity linked to ${country.charAt(0).toUpperCase() + country.slice(1)}`,
+                        detail: `Cyber threats from ${country} while country is in geopolitical news`,
+                        severity: 'high',
+                        icon: '[CYBER]'
+                    });
+                }
+            });
+        });
+    }
+    
+    // 3. Disasters → Related news coverage gap
+    // Major disasters not getting proportional news coverage
+    if (disasters.length > 0) {
+        disasters.filter(d => d.isUrgent).forEach(disaster => {
+            const disasterTerms = (disaster.title || '').toLowerCase().split(' ');
+            const newsText = news.map(n => (n.title || '').toLowerCase()).join(' ');
+            const covered = disasterTerms.some(term => term.length > 4 && newsText.includes(term));
+            if (!covered) {
+                connections.push({
+                    type: 'disaster-gap',
+                    title: 'Disaster underreported',
+                    detail: disaster.title,
+                    severity: 'moderate',
+                    icon: '[ALERT]'
+                });
+            }
+        });
+    }
+    
+    // 4. Polymarket → News validation
+    // High probability events correlating with news volume
+    if (polymarket.length > 0 && news.length > 0) {
+        const newsText = news.map(n => (n.title || '').toLowerCase()).join(' ');
+        polymarket.filter(p => p.probability >= 70).forEach(prediction => {
+            const predTerms = (prediction.title || '').toLowerCase().split(/\s+/).filter(t => t.length > 4);
+            const matchCount = predTerms.filter(term => newsText.includes(term)).length;
+            if (matchCount >= 2) {
+                connections.push({
+                    type: 'prediction-news',
+                    title: `Market predicting: ${prediction.title.substring(0, 50)}...`,
+                    detail: `${prediction.probability}% probability with ${matchCount} keyword matches in news`,
+                    severity: matchCount >= 3 ? 'high' : 'elevated',
+                    icon: '[MARKET]'
+                });
+            }
+        });
+    }
+    
+    // 5. Whale transactions → Crypto news
+    if (whales.length > 0 && news.length > 0) {
+        const cryptoNews = news.filter(n => /bitcoin|btc|crypto|ethereum/i.test(n.title || ''));
+        if (whales.length >= 3 && cryptoNews.length >= 2) {
+            const totalBTC = whales.reduce((sum, w) => sum + (w.amount || 0), 0);
+            connections.push({
+                type: 'whale-news',
+                title: `Large BTC movements (${totalBTC.toFixed(1)} BTC)`,
+                detail: `${whales.length} whale transactions while crypto in news`,
+                severity: totalBTC > 100 ? 'high' : 'elevated',
+                icon: '[WHALE]'
+            });
+        }
+    }
+    
+    // Deduplicate and sort by severity
+    const seen = new Set();
+    return connections
+        .filter(c => {
+            const key = `${c.type}-${c.title}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .sort((a, b) => {
+            const order = { high: 0, elevated: 1, moderate: 2 };
+            return (order[a.severity] || 3) - (order[b.severity] || 3);
+        })
+        .slice(0, 6);
+}
+
 // Detect regions from text
 export function detectRegions(text) {
     const lower = text.toLowerCase();
@@ -522,3 +678,38 @@ export function detectTopics(text) {
     }
     return topics;
 }
+
+// ========== DELEGATED CLICK HANDLERS FOR CORRELATION ENGINE ==========
+// These handlers work on both original panels and pinned clones
+// because they use event delegation on the document level
+
+function initCorrelationClickHandlers() {
+    document.addEventListener('click', (e) => {
+        // Handle clickable-mentions (emerging patterns)
+        const mentionsBtn = e.target.closest('.clickable-mentions');
+        if (mentionsBtn) {
+            const idx = mentionsBtn.dataset.patternIdx;
+            const container = mentionsBtn.closest('.correlation-item');
+            if (container) {
+                const list = container.querySelector(`[data-for="pattern-${idx}"]`);
+                if (list) list.classList.toggle('hidden');
+            }
+            return;
+        }
+        
+        // Handle clickable-sources (cross-source correlations)
+        const sourcesBtn = e.target.closest('.clickable-sources');
+        if (sourcesBtn) {
+            const idx = sourcesBtn.dataset.crossIdx;
+            const container = sourcesBtn.closest('.correlation-item');
+            if (container) {
+                const list = container.querySelector(`[data-for="cross-${idx}"]`);
+                if (list) list.classList.toggle('hidden');
+            }
+            return;
+        }
+    });
+}
+
+// Initialize handlers when module loads
+initCorrelationClickHandlers();
