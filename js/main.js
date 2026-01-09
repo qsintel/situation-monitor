@@ -58,26 +58,40 @@ function toggleAlerts() {
     alertsEnabled = !alertsEnabled;
     localStorage.setItem('alertsEnabled', alertsEnabled);
     
-    const btn = document.querySelector('.alert-btn');
-    if (btn) {
-        btn.classList.toggle('active', alertsEnabled);
-        btn.title = alertsEnabled ? 'Alerts ON - Click to disable' : 'Alerts OFF - Click to enable';
-    }
+    updateAlertsButtonState();
     
     if (alertsEnabled) {
         if (!('Notification' in window)) {
             setStatus('Desktop notifications not supported in this environment');
         } else if (Notification.permission !== 'granted') {
             // Most browsers require this to be called from a user gesture.
-            Notification.requestPermission().catch(() => {});
+            Notification.requestPermission().then(perm => {
+                if (perm === 'granted') {
+                    setStatus('Alerts enabled - notifications allowed');
+                } else {
+                    setStatus('Alerts enabled but notifications blocked by browser');
+                }
+            }).catch(() => {});
+        } else {
+            setStatus('Alerts enabled');
         }
+    } else {
+        setStatus('Alerts disabled');
     }
-    
-    setStatus(alertsEnabled ? 'Alerts enabled' : 'Alerts disabled');
 }
 
-// Check for alert-worthy news and send notification
-function checkForAlerts(news) {
+// Update alerts button visual state
+function updateAlertsButtonState() {
+    const btn = document.getElementById('alertsBtn');
+    if (btn) {
+        btn.classList.toggle('active', alertsEnabled);
+        btn.title = alertsEnabled ? 'Alerts ON - Click to disable' : 'Alerts OFF - Click to enable';
+    }
+}
+
+// Check for alert-worthy news and send desktop notification
+// Now sends notifications for ALL new headlines (matching the in-app popups)
+function checkForAlerts(newItems) {
     if (!alertsEnabled) return;
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') {
@@ -88,21 +102,34 @@ function checkForAlerts(news) {
         return;
     }
     
+    // Keywords that mark critical alerts (these get a special prefix)
     const criticalKeywords = ['breaking', 'missile', 'attack', 'invasion', 'nuclear', 'war', 'emergency', 'assassination', 'crash', 'explosion'];
     
-    news.forEach(item => {
+    // Send notification for each new item (max 3 to avoid spam)
+    const itemsToNotify = newItems.slice(0, 3);
+    
+    itemsToNotify.forEach(item => {
         const id = item.title?.substring(0, 50);
+        if (!id) return;
         if (seenAlerts.has(id)) return;
+        seenAlerts.add(id);
         
         const title = (item.title || '').toLowerCase();
         const isCritical = criticalKeywords.some(kw => title.includes(kw));
         
-        if (isCritical || item.isAlert) {
-            seenAlerts.add(id);
-            new Notification('⚠️ Alert: ' + item.source, {
+        const notifTitle = isCritical 
+            ? '⚠️ BREAKING: ' + (item.source || 'News')
+            : '📰 ' + (item.source || 'News');
+        
+        try {
+            new Notification(notifTitle, {
                 body: item.title,
-                tag: id
+                tag: id,
+                icon: '📡',
+                requireInteraction: isCritical
             });
+        } catch (e) {
+            console.warn('Failed to show notification:', e);
         }
     });
     
@@ -204,7 +231,8 @@ function checkForNewHeadlines(news) {
 window.toggleNotifications = toggleNotifications;
 
 // ========== PINNED PANELS ==========
-let pinnedPanels = new Set(JSON.parse(localStorage.getItem('pinnedPanels') || '[]'));
+const DEFAULT_PINNED_PANELS = ['politics', 'finance', 'gov', 'intel', 'correlation', 'narrative', 'whales'];
+let pinnedPanels = new Set(JSON.parse(localStorage.getItem('pinnedPanels') || 'null') || DEFAULT_PINNED_PANELS);
 
 function togglePinPanel(panelId) {
     if (pinnedPanels.has(panelId)) {
@@ -1075,6 +1103,9 @@ function boot() {
 
     // Initialize notification toggle
     updateNotificationToggle();
+    
+    // Initialize alerts button state from localStorage
+    updateAlertsButtonState();
     
     // Initialize pin buttons
     updatePinButtons();

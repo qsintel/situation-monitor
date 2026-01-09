@@ -213,20 +213,39 @@ export function renderWhaleWatch(whales) {
         if (usd >= 1000000) return '$' + (usd / 1000000).toFixed(1) + 'M';
         return '$' + (usd / 1000).toFixed(0) + 'K';
     };
+    
+    // Get blockchain explorer URL based on coin type
+    const getExplorerUrl = (coin, fullHash) => {
+        if (!fullHash) return null;
+        switch (coin.toUpperCase()) {
+            case 'BTC': return `https://www.blockchain.com/btc/tx/${fullHash}`;
+            case 'ETH': return `https://etherscan.io/tx/${fullHash}`;
+            case 'USDT': return `https://etherscan.io/tx/${fullHash}`;
+            case 'USDC': return `https://etherscan.io/tx/${fullHash}`;
+            default: return `https://www.blockchain.com/search?search=${fullHash}`;
+        }
+    };
 
-    panel.innerHTML = whales.map(w => `
-        <div class="whale-item">
-            <div class="whale-header">
-                <span class="whale-coin">${w.coin}</span>
-                <span class="whale-amount">${formatAmount(w.amount)} ${w.coin}</span>
+    panel.innerHTML = whales.map(w => {
+        const explorerUrl = getExplorerUrl(w.coin, w.fullHash);
+        const hashDisplay = explorerUrl 
+            ? `<a href="${explorerUrl}" target="_blank" rel="noopener" class="whale-hash-link" title="View on blockchain explorer">${w.hash}</a>`
+            : `<span>${w.hash}</span>`;
+        
+        return `
+            <div class="whale-item">
+                <div class="whale-header">
+                    <span class="whale-coin">${w.coin}</span>
+                    <span class="whale-amount">${formatAmount(w.amount)} ${w.coin}</span>
+                </div>
+                <div class="whale-flow">
+                    <span class="whale-usd">${formatUSD(w.usd)}</span>
+                    <span class="arrow">→</span>
+                    ${hashDisplay}
+                </div>
             </div>
-            <div class="whale-flow">
-                <span class="whale-usd">${formatUSD(w.usd)}</span>
-                <span class="arrow">→</span>
-                <span>${w.hash}</span>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     if (count) count.textContent = whales.length;
 }

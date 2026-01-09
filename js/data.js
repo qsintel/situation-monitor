@@ -386,6 +386,7 @@ export async function fetchWhaleTransactions() {
                     amount: totalBTC,
                     usd: totalBTC * 45000, // Approximate USD
                     hash: tx.hash.substring(0, 12) + '...',
+                    fullHash: tx.hash, // Full hash for blockchain explorer link
                     time: new Date(tx.time * 1000)
                 };
             });

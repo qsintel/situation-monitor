@@ -416,17 +416,36 @@ function renderStreamEmbed(stream) {
     // Default to privacy-enhanced embeds (avoids consent prompts in some browsers).
     const ytHost = 'https://www.youtube-nocookie.com';
 
-    // YouTube live stream by channelId (official embed URL)
+    // YouTube live stream by channelId
+    // Try embedding the /channel/ID/live page directly - this often works better than /embed/live_stream
     if (stream.type === 'youtube-live-channel' && stream.channelId) {
+        const livePageUrl = `https://www.youtube.com/channel/${stream.channelId}/live`;
+        // Use the regular embed with live_stream parameter as primary, but also try resolving via proxy
         const embedUrl = `${ytHost}/embed/live_stream?channel=${stream.channelId}&autoplay=1&mute=1&playsinline=1&rel=0${originParam}`;
         // We attach data-channel-id so we can opportunistically swap this to a concrete /embed/<videoId>
         // when the channel /live page can be resolved via CORS proxy.
-        return `<iframe data-yt-live-channel-id="${stream.channelId}" src="${embedUrl}" title="${stream.name || 'Live stream'}" loading="lazy" referrerpolicy="origin-when-cross-origin" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+        return `
+            <div class="stream-embed-wrapper" data-yt-channel-id="${stream.channelId}">
+                <iframe data-yt-live-channel-id="${stream.channelId}" src="${embedUrl}" title="${stream.name || 'Live stream'}" loading="lazy" referrerpolicy="origin-when-cross-origin" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen onerror="this.src='${livePageUrl}'"></iframe>
+                <div class="stream-fallback">
+                    <span>Stream not loading?</span>
+                    <a href="${livePageUrl}" target="_blank" rel="noopener" class="stream-fallback-link">Watch on YouTube ↗</a>
+                </div>
+            </div>
+        `;
     }
 
     // Try embedding a YouTube /live landing page anyway (may be blocked by YouTube)
     if (stream.type === 'youtube-page' && stream.pageUrl) {
-        return `<iframe src="${stream.pageUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" referrerpolicy="origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+        return `
+            <div class="stream-embed-wrapper">
+                <iframe src="${stream.pageUrl}" title="${stream.name || 'Live stream'}" loading="lazy" frameborder="0" referrerpolicy="origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                <div class="stream-fallback">
+                    <span>Stream not loading?</span>
+                    <a href="${stream.pageUrl}" target="_blank" rel="noopener" class="stream-fallback-link">Watch on YouTube ↗</a>
+                </div>
+            </div>
+        `;
     }
 
     // YouTube channel live page

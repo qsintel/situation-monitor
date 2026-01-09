@@ -60,7 +60,7 @@
         </div>
         <div class="header-right">
             <span class="status" id="status" title="">Ready</span>
-            <button class="header-btn" onclick="toggleAlerts()">Alerts</button>
+            <button class="header-btn alert-btn" id="alertsBtn" onclick="toggleAlerts()">Alerts</button>
             <button class="header-btn" onclick="toggleSettings()">Settings</button>
             <button class="header-btn refresh-btn" onclick="refreshAll()">Refresh <span class="countdown" id="countdown">5:00</span></button>
         </div>
@@ -432,6 +432,7 @@
                         <div class="panel-header">
                             <span class="panel-title">Money Printer</span>
                             <div class="panel-header-actions">
+                                <span class="help-icon" data-help="Money Printer tracks the Federal Reserve's balance sheet size in real-time. It shows the current total assets, change from previous period, and a visual gauge showing how close we are to peak balance sheet levels. Useful for monitoring quantitative easing/tightening and overall liquidity conditions.">?</span>
                                 <button class="panel-pin" data-panel="printer" onclick="togglePinPanel('printer')" title="Pin to dashboard">○</button>
                             </div>
                         </div>
