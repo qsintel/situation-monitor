@@ -7,17 +7,17 @@ import { getMapViewMode } from './map.js';
 export const mapLayers = {
     hotspots: true,
     chokepoints: true,
-    earthquakes: false,
-    cyber: false,
+    earthquakes: true,
+    cyber: true,
     conflicts: true,
-    intel: false,
-    bases: false,
-    nuclear: false,
-    cables: false,
-    sanctions: false,
-    flights: false,
-    satellite: false,
-    density: false
+    intel: true,
+    bases: true,
+    nuclear: true,
+    cables: true,
+    sanctions: true,
+    flights: true,
+    satellite: true,
+    density: true
 };
 
 // Flight data cache

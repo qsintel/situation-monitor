@@ -169,7 +169,7 @@ export function renderCorrelationEngine(correlations) {
     const statusEl = document.getElementById('correlationStatus');
 
     if (!correlations) {
-        statusEl.textContent = 'NO DATA';
+        if (statusEl) statusEl.textContent = 'NO DATA';
         return;
     }
 
@@ -177,94 +177,102 @@ export function renderCorrelationEngine(correlations) {
                         correlations.momentumSignals.length +
                         correlations.predictiveSignals.length;
 
-    statusEl.textContent = totalSignals > 0 ? `${totalSignals} SIGNALS` : 'MONITORING';
+    if (statusEl) statusEl.textContent = totalSignals > 0 ? `${totalSignals} SIGNALS` : 'MONITORING';
 
     // Render Emerging Patterns
     const emergingEl = document.getElementById('emergingPatterns');
-    if (correlations.emergingPatterns.length > 0) {
-        emergingEl.innerHTML = correlations.emergingPatterns.slice(0, 4).map(p => `
-            <div class="correlation-item ${p.level}">
-                <div class="correlation-item-header">
-                    <span class="correlation-topic">${p.name}</span>
-                    <span class="correlation-score ${p.level}">${p.count} mentions</span>
+    if (emergingEl) {
+        if (correlations.emergingPatterns.length > 0) {
+            emergingEl.innerHTML = correlations.emergingPatterns.slice(0, 4).map(p => `
+                <div class="correlation-item ${p.level}">
+                    <div class="correlation-item-header">
+                        <span class="correlation-topic">${p.name}</span>
+                        <span class="correlation-score ${p.level}">${p.count} mentions</span>
+                    </div>
+                    <div class="correlation-meta">${p.category} • ${p.sources.length} sources</div>
+                    <div class="correlation-sources">
+                        ${p.sources.slice(0, 4).map(s => `<span class="correlation-source-tag">${s}</span>`).join('')}
+                    </div>
                 </div>
-                <div class="correlation-meta">${p.category} • ${p.sources.length} sources</div>
-                <div class="correlation-sources">
-                    ${p.sources.slice(0, 4).map(s => `<span class="correlation-source-tag">${s}</span>`).join('')}
-                </div>
-            </div>
-        `).join('');
-    } else {
-        emergingEl.innerHTML = '<div class="no-correlations">No emerging patterns detected</div>';
+            `).join('');
+        } else {
+            emergingEl.innerHTML = '<div class="no-correlations">No emerging patterns detected</div>';
+        }
     }
 
     // Render Momentum Signals
     const momentumEl = document.getElementById('momentumSignals');
-    if (correlations.momentumSignals.length > 0) {
-        momentumEl.innerHTML = correlations.momentumSignals.slice(0, 4).map(m => `
-            <div class="correlation-item ${m.momentum === 'surging' ? 'high' : m.momentum === 'rising' ? 'elevated' : ''}">
-                <div class="correlation-item-header">
-                    <span class="correlation-topic">${m.name}</span>
-                    <span class="momentum-indicator ${m.momentum}">
-                        ${m.momentum === 'surging' ? '🚀' : m.momentum === 'rising' ? '📈' : '➡️'}
-                        ${m.momentum.toUpperCase()}
-                    </span>
-                </div>
-                <div class="correlation-meta">${m.category} • ${m.current} now (+${m.delta} in 10m)</div>
-                ${m.headlines.length > 0 ? `
-                    <div class="correlation-headlines">
-                        ${m.headlines.slice(0, 2).map(h => `
-                            <div class="correlation-headline">
-                                <a href="${h.link}" target="_blank">${h.title.substring(0, 60)}...</a>
-                            </div>
-                        `).join('')}
+    if (momentumEl) {
+        if (correlations.momentumSignals.length > 0) {
+            momentumEl.innerHTML = correlations.momentumSignals.slice(0, 4).map(m => `
+                <div class="correlation-item ${m.momentum === 'surging' ? 'high' : m.momentum === 'rising' ? 'elevated' : ''}">
+                    <div class="correlation-item-header">
+                        <span class="correlation-topic">${m.name}</span>
+                        <span class="momentum-indicator ${m.momentum}">
+                            ${m.momentum === 'surging' ? '🚀' : m.momentum === 'rising' ? '📈' : '➡️'}
+                            ${m.momentum.toUpperCase()}
+                        </span>
                     </div>
-                ` : ''}
-            </div>
-        `).join('');
-    } else {
-        momentumEl.innerHTML = '<div class="no-correlations">No momentum signals detected</div>';
+                    <div class="correlation-meta">${m.category} • ${m.current} now (+${m.delta} in 10m)</div>
+                    ${m.headlines.length > 0 ? `
+                        <div class="correlation-headlines">
+                            ${m.headlines.slice(0, 2).map(h => `
+                                <div class="correlation-headline">
+                                    <a href="${h.link}" target="_blank">${h.title.substring(0, 60)}...</a>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        } else {
+            momentumEl.innerHTML = '<div class="no-correlations">No momentum signals detected</div>';
+        }
     }
 
     // Render Cross-Source Correlations
     const crossEl = document.getElementById('crossSourceCorrelations');
-    if (correlations.crossSourceCorrelations.length > 0) {
-        crossEl.innerHTML = correlations.crossSourceCorrelations.slice(0, 4).map(c => `
-            <div class="correlation-item ${c.level}">
-                <div class="correlation-item-header">
-                    <span class="correlation-topic">${c.name}</span>
-                    <span class="correlation-score ${c.level}">${c.sourceCount} sources</span>
+    if (crossEl) {
+        if (correlations.crossSourceCorrelations.length > 0) {
+            crossEl.innerHTML = correlations.crossSourceCorrelations.slice(0, 4).map(c => `
+                <div class="correlation-item ${c.level}">
+                    <div class="correlation-item-header">
+                        <span class="correlation-topic">${c.name}</span>
+                        <span class="correlation-score ${c.level}">${c.sourceCount} sources</span>
+                    </div>
+                    <div class="correlation-meta">${c.category} • Multi-outlet coverage</div>
+                    <div class="correlation-sources">
+                        ${c.sources.slice(0, 5).map(s => `<span class="correlation-source-tag">${s}</span>`).join('')}
+                    </div>
                 </div>
-                <div class="correlation-meta">${c.category} • Multi-outlet coverage</div>
-                <div class="correlation-sources">
-                    ${c.sources.slice(0, 5).map(s => `<span class="correlation-source-tag">${s}</span>`).join('')}
-                </div>
-            </div>
-        `).join('');
-    } else {
-        crossEl.innerHTML = '<div class="no-correlations">No cross-source correlations</div>';
+            `).join('');
+        } else {
+            crossEl.innerHTML = '<div class="no-correlations">No cross-source correlations</div>';
+        }
     }
 
     // Render Predictive Signals
     const predictEl = document.getElementById('predictiveSignals');
-    if (correlations.predictiveSignals.length > 0) {
-        predictEl.innerHTML = correlations.predictiveSignals.slice(0, 4).map(p => `
-            <div class="correlation-item ${p.level}">
-                <div class="correlation-item-header">
-                    <span class="correlation-topic">${p.name}</span>
-                    <span class="correlation-score ${p.level}">${p.confidence}%</span>
-                </div>
-                <div class="correlation-meta">${p.prediction}</div>
-                <div class="prediction-confidence">
-                    <div class="confidence-bar">
-                        <div class="confidence-fill ${p.level}" style="width: ${p.confidence}%"></div>
+    if (predictEl) {
+        if (correlations.predictiveSignals.length > 0) {
+            predictEl.innerHTML = correlations.predictiveSignals.slice(0, 4).map(p => `
+                <div class="correlation-item ${p.level}">
+                    <div class="correlation-item-header">
+                        <span class="correlation-topic">${p.name}</span>
+                        <span class="correlation-score ${p.level}">${p.confidence}%</span>
                     </div>
-                    <span class="confidence-label">confidence</span>
+                    <div class="correlation-meta">${p.prediction}</div>
+                    <div class="prediction-confidence">
+                        <div class="confidence-bar">
+                            <div class="confidence-fill ${p.level}" style="width: ${p.confidence}%"></div>
+                        </div>
+                        <span class="confidence-label">confidence</span>
+                    </div>
                 </div>
-            </div>
-        `).join('');
-    } else {
-        predictEl.innerHTML = '<div class="no-correlations">Gathering data for predictions...</div>';
+            `).join('');
+        } else {
+            predictEl.innerHTML = '<div class="no-correlations">Gathering data for predictions...</div>';
+        }
     }
 }
 

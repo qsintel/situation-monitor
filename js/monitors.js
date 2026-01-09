@@ -222,7 +222,7 @@ export function renderMonitorsPanel(allNews) {
                 <div class="monitors-empty-hint">Click Settings → Add Monitor to get started</div>
             </div>
         `;
-        countEl.textContent = '-';
+        if (countEl) countEl.textContent = '-';
         return;
     }
 
@@ -240,11 +240,11 @@ export function renderMonitorsPanel(allNews) {
                 <div class="monitors-empty-hint">Your ${monitors.length} monitor(s) found no matching headlines</div>
             </div>
         `;
-        countEl.textContent = '0';
+        if (countEl) countEl.textContent = '0';
         return;
     }
 
-    countEl.textContent = allMatches.length;
+    if (countEl) countEl.textContent = allMatches.length;
     panel.innerHTML = allMatches.slice(0, 20).map(match => `
         <div class="monitor-match">
             <div class="monitor-match-header">

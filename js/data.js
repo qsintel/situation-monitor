@@ -1,19 +1,81 @@
 // data.js - All data fetching functions
 
-import { CORS_PROXIES, ALERT_KEYWORDS, SECTORS, COMMODITIES, INTEL_SOURCES, AI_FEEDS } from './constants.js';
+import { CORS_PROXIES, ALERT_KEYWORDS, SECTORS, COMMODITIES, INTEL_SOURCES, AI_FEEDS, CYBER_FEEDS, DISASTER_FEEDS, SOCIAL_FEEDS } from './constants.js';
+
+// Simple in-memory cache for faster repeated loads
+const cache = new Map();
+const CACHE_TTL = 60000; // 1 minute cache
+
+// Rate limiting - track last request time
+let lastRequestTime = 0;
+const MIN_REQUEST_DELAY = 100; // 100ms between requests
+
+function getCached(key) {
+    const item = cache.get(key);
+    if (item && Date.now() - item.time < CACHE_TTL) {
+        return item.data;
+    }
+    return null;
+}
+
+function setCache(key, data) {
+    cache.set(key, { data, time: Date.now() });
+}
+
+// Sleep helper for rate limiting
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Rate-limited fetch wrapper
+async function rateLimitedFetch(url, options = {}) {
+    const now = Date.now();
+    const elapsed = now - lastRequestTime;
+    if (elapsed < MIN_REQUEST_DELAY) {
+        await sleep(MIN_REQUEST_DELAY - elapsed);
+    }
+    lastRequestTime = Date.now();
+    return fetch(url, options);
+}
+
+// Helper for fetch with timeout - reduced default for snappier feel
+export async function fetchWithTimeout(resource, options = {}) {
+    const { timeout = 4000 } = options;
+    
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        throw error;
+    }
+}
 
 // Fetch with proxy fallback
 export async function fetchWithProxy(url) {
+    // Check cache first
+    const cached = getCached(url);
+    if (cached) return cached;
+    
     for (let i = 0; i < CORS_PROXIES.length; i++) {
         try {
             const proxy = CORS_PROXIES[i];
-            const response = await fetch(proxy + encodeURIComponent(url), {
-                headers: { 'Accept': 'application/rss+xml, application/xml, text/xml, */*' }
+            const response = await fetchWithTimeout(proxy + encodeURIComponent(url), {
+                headers: { 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
+                timeout: 4000
             });
             if (response.ok) {
                 const text = await response.text();
                 // Check if response is valid (not an error page)
                 if (text && !text.includes('<!DOCTYPE html>') && !text.includes('error code:')) {
+                    setCache(url, text);  // Cache successful response
                     return text;
                 }
             }
@@ -26,23 +88,36 @@ export async function fetchWithProxy(url) {
 
 // Fetch RSS feed using rss2json API as primary method
 export async function fetchFeedViaJson(source) {
+    // Check cache first
+    const cacheKey = 'json:' + source.url;
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+    
     try {
         const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`;
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error('rss2json API failed');
+        const response = await fetchWithTimeout(apiUrl, { timeout: 5000 });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
 
         const data = await response.json();
         if (data.status !== 'ok' || !data.items) return [];
 
-        return data.items.slice(0, 5).map(item => ({
+        const items = data.items.slice(0, 5).map(item => ({
             source: source.name,
             title: (item.title || 'No title').trim(),
             link: item.link || '',
             pubDate: item.pubDate || '',
-            isAlert: hasAlertKeyword(item.title || '')
+            isAlert: hasAlertKeyword(item.title || ''),
+            region: source.region || null,
+            topics: source.topics || []
         }));
+        
+        setCache(cacheKey, items);
+        return items;
     } catch (e) {
-        console.log(`rss2json failed for ${source.name}, trying XML proxy...`);
+        console.log(`rss2json failed for ${source.name}: ${e.message}`);
         return null; // Signal to try XML fallback
     }
 }
@@ -96,7 +171,9 @@ export async function fetchFeed(source) {
                 title,
                 link,
                 pubDate,
-                isAlert: hasAlertKeyword(title)
+                isAlert: hasAlertKeyword(title),
+                region: source.region || null,
+                topics: source.topics || []
             };
         });
     } catch (error) {
@@ -105,12 +182,17 @@ export async function fetchFeed(source) {
     }
 }
 
-// Fetch all feeds for a category
+// Fetch all feeds for a category - parallel for speed
 export async function fetchCategory(feeds) {
+    console.log(`Fetching ${feeds.length} feeds...`);
+    
+    // Fetch all in parallel for speed
     const results = await Promise.all(feeds.map(fetchFeed));
-    const items = results.flat();
+    const allItems = results.flat();
+    
+    console.log(`Got ${allItems.length} items from ${feeds.length} feeds`);
 
-    items.sort((a, b) => {
+    allItems.sort((a, b) => {
         // Alerts first, then by date
         if (a.isAlert && !b.isAlert) return -1;
         if (!a.isAlert && b.isAlert) return 1;
@@ -119,7 +201,8 @@ export async function fetchCategory(feeds) {
         return dateB - dateA;
     });
 
-    return items.slice(0, 20);
+    // Return more items now that we have many feeds
+    return allItems.slice(0, 50);
 }
 
 // Fetch stock quote from Yahoo Finance
@@ -186,7 +269,7 @@ export async function fetchMarkets() {
 
     // Crypto
     try {
-        const cryptoResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true');
+        const cryptoResponse = await fetchWithTimeout('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true', { timeout: 5000 });
         const crypto = await cryptoResponse.json();
 
         if (crypto.bitcoin) markets.push({ name: 'Bitcoin', symbol: 'BTC', price: crypto.bitcoin.usd, change: crypto.bitcoin.usd_24h_change });
@@ -213,14 +296,14 @@ export async function fetchSectors() {
 
 // Fetch commodities and VIX
 export async function fetchCommodities() {
-    const results = [];
-    for (const c of COMMODITIES) {
+    const results = await Promise.all(COMMODITIES.map(async (c) => {
         const quote = await fetchQuote(c.symbol);
         if (quote) {
-            results.push({ name: c.name, symbol: c.display, price: quote.price, change: quote.change });
+            return { name: c.name, symbol: c.display, price: quote.price, change: quote.change };
         }
-    }
-    return results;
+        return null; // Filtered out later
+    }));
+    return results.filter(r => r !== null);
 }
 
 // Fetch flight data from OpenSky Network
@@ -231,7 +314,7 @@ export async function fetchFlightData(bounds = null) {
             url += `?lamin=${bounds.south}&lomin=${bounds.west}&lamax=${bounds.north}&lomax=${bounds.east}`;
         }
 
-        const response = await fetch(url);
+        const response = await fetchWithTimeout(url, { timeout: 8000 });
         if (!response.ok) throw new Error('Flight API error');
 
         const data = await response.json();
@@ -276,23 +359,79 @@ export async function fetchCongressTrades() {
     }
 }
 
-// Fetch whale transactions (crypto)
+// Fetch whale transactions (crypto) from Whale Alert public feed
 export async function fetchWhaleTransactions() {
     try {
-        // This would normally use a whale alert API
-        // For now return mock data structure
-        return [];
+        // Use blockchain.info for recent large BTC transactions
+        const response = await fetchWithTimeout(
+            'https://blockchain.info/unconfirmed-transactions?format=json',
+            { timeout: 8000 }
+        );
+        
+        if (!response.ok) throw new Error('Blockchain API error');
+        
+        const data = await response.json();
+        
+        // Filter for large transactions (> 10 BTC)
+        const largeTxs = data.txs
+            .filter(tx => {
+                const totalOut = tx.out.reduce((sum, o) => sum + o.value, 0);
+                return totalOut > 1000000000; // > 10 BTC in satoshis
+            })
+            .slice(0, 10)
+            .map(tx => {
+                const totalBTC = tx.out.reduce((sum, o) => sum + o.value, 0) / 100000000;
+                return {
+                    coin: 'BTC',
+                    amount: totalBTC,
+                    usd: totalBTC * 45000, // Approximate USD
+                    hash: tx.hash.substring(0, 12) + '...',
+                    time: new Date(tx.time * 1000)
+                };
+            });
+        
+        return largeTxs;
     } catch (error) {
         console.error('Error fetching whale transactions:', error);
         return [];
     }
 }
 
-// Fetch government contracts
+// Fetch government contracts from USASpending.gov
 export async function fetchGovContracts() {
     try {
-        // Would use USASpending.gov API
-        return [];
+        const today = new Date().toISOString().split('T')[0];
+        const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        const response = await fetchWithTimeout(
+            `https://api.usaspending.gov/api/v2/search/spending_by_award/?limit=15`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filters: {
+                        time_period: [{ start_date: lastWeek, end_date: today }],
+                        award_type_codes: ['A', 'B', 'C', 'D']
+                    },
+                    fields: ['Award ID', 'Recipient Name', 'Award Amount', 'Awarding Agency', 'Description'],
+                    sort: 'Award Amount',
+                    order: 'desc',
+                    limit: 15
+                }),
+                timeout: 10000
+            }
+        );
+        
+        if (!response.ok) throw new Error('USASpending API error');
+        
+        const data = await response.json();
+        
+        return (data.results || []).map(c => ({
+            agency: c['Awarding Agency'] || 'Federal Agency',
+            vendor: c['Recipient Name'] || 'Unknown',
+            amount: c['Award Amount'] || 0,
+            description: c['Description'] || 'Government contract'
+        }));
     } catch (error) {
         console.error('Error fetching gov contracts:', error);
         return [];
@@ -305,7 +444,7 @@ export async function fetchAINews() {
         // Try rss2json API first
         try {
             const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`;
-            const response = await fetch(apiUrl);
+            const response = await fetchWithTimeout(apiUrl, { timeout: 5000 });
             if (response.ok) {
                 const data = await response.json();
                 if (data.status === 'ok' && data.items) {
@@ -352,6 +491,96 @@ export async function fetchAINews() {
     return results.flat().sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 15);
 }
 
+// Fetch cyber threat intelligence
+export async function fetchCyberThreats() {
+    const results = await Promise.all(CYBER_FEEDS.map(async (source) => {
+        try {
+            const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`;
+            const response = await fetchWithTimeout(apiUrl, { timeout: 5000 });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'ok' && data.items) {
+                    return data.items.slice(0, 3).map(item => ({
+                        source: source.name,
+                        title: (item.title || 'No title').trim(),
+                        link: item.link || '',
+                        pubDate: item.pubDate || '',
+                        isCritical: /critical|zero-day|ransomware|breach|attack|exploit/i.test(item.title)
+                    }));
+                }
+            }
+        } catch (e) {
+            console.log(`Failed to fetch ${source.name}`);
+        }
+        return [];
+    }));
+
+    return results.flat().sort((a, b) => {
+        // Critical alerts first
+        if (a.isCritical && !b.isCritical) return -1;
+        if (!a.isCritical && b.isCritical) return 1;
+        return new Date(b.pubDate) - new Date(a.pubDate);
+    }).slice(0, 20);
+}
+
+// Fetch natural disaster alerts
+export async function fetchDisasters() {
+    const results = await Promise.all(DISASTER_FEEDS.map(async (source) => {
+        try {
+            const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`;
+            const response = await fetchWithTimeout(apiUrl, { timeout: 5000 });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'ok' && data.items) {
+                    return data.items.slice(0, 5).map(item => ({
+                        source: source.name,
+                        title: (item.title || 'No title').trim(),
+                        link: item.link || '',
+                        pubDate: item.pubDate || '',
+                        isUrgent: /magnitude [5-9]|major|severe|warning|emergency|tsunami|hurricane|typhoon/i.test(item.title)
+                    }));
+                }
+            }
+        } catch (e) {
+            console.log(`Failed to fetch ${source.name}`);
+        }
+        return [];
+    }));
+
+    return results.flat().sort((a, b) => {
+        // Urgent alerts first
+        if (a.isUrgent && !b.isUrgent) return -1;
+        if (!a.isUrgent && b.isUrgent) return 1;
+        return new Date(b.pubDate) - new Date(a.pubDate);
+    }).slice(0, 15);
+}
+
+// Fetch social media trends
+export async function fetchSocialTrends() {
+    const results = await Promise.all(SOCIAL_FEEDS.map(async (source) => {
+        try {
+            const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`;
+            const response = await fetchWithTimeout(apiUrl, { timeout: 5000 });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'ok' && data.items) {
+                    return data.items.slice(0, 5).map(item => ({
+                        source: source.name,
+                        title: (item.title || 'No title').trim(),
+                        link: item.link || '',
+                        pubDate: item.pubDate || ''
+                    }));
+                }
+            }
+        } catch (e) {
+            console.log(`Failed to fetch ${source.name}`);
+        }
+        return [];
+    }));
+
+    return results.flat().sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate)).slice(0, 20);
+}
+
 // Fetch Fed balance sheet from FRED
 export async function fetchFedBalance() {
     try {
@@ -385,21 +614,44 @@ export async function fetchFedBalance() {
     };
 }
 
-// Fetch Polymarket data
+// Fetch Polymarket data from Gamma API
 export async function fetchPolymarket() {
     try {
-        // Would use Polymarket API
-        return [];
+        // Use Polymarket's public Gamma API for popular markets
+        const response = await fetchWithTimeout(
+            'https://gamma-api.polymarket.com/markets?closed=false&order=volume24hr&ascending=false&limit=15',
+            { timeout: 8000 }
+        );
+        
+        if (!response.ok) throw new Error('Polymarket API error');
+        
+        const markets = await response.json();
+        
+        return markets.filter(m => m.outcomePrices).map(market => {
+            const prices = JSON.parse(market.outcomePrices);
+            const yesPrice = parseFloat(prices[0]) * 100;
+            
+            return {
+                question: market.question || 'Unknown',
+                yes: Math.round(yesPrice),
+                no: Math.round(100 - yesPrice),
+                volume: market.volume24hr || market.volume || 0,
+                id: market.id
+            };
+        }).slice(0, 12);
     } catch (error) {
         console.error('Error fetching Polymarket:', error);
-        return [];
+        // Return sample data as fallback
+        return [
+            { question: 'Market data temporarily unavailable', yes: 50, no: 50, volume: 0 }
+        ];
     }
 }
 
 // Fetch earthquake data from USGS
 export async function fetchEarthquakes() {
     try {
-        const response = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson');
+        const response = await fetchWithTimeout('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson', { timeout: 8000 });
         const data = await response.json();
 
         return data.features.map(f => ({
@@ -417,21 +669,91 @@ export async function fetchEarthquakes() {
     }
 }
 
-// Fetch layoffs data
+// Fetch layoffs data from news sources
 export async function fetchLayoffs() {
     try {
-        // Would use layoffs.fyi API or similar
-        return [];
+        // Search tech layoff news from multiple sources
+        const sources = [
+            { name: 'Tech Layoffs', url: 'https://hnrss.org/newest?q=layoff+OR+layoffs' },
+            { name: 'Job Cuts', url: 'https://news.google.com/rss/search?q=tech+layoffs&hl=en-US&gl=US&ceid=US:en' }
+        ];
+        
+        const results = await Promise.all(sources.map(async (source) => {
+            try {
+                const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`;
+                const response = await fetchWithTimeout(apiUrl, { timeout: 5000 });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'ok' && data.items) {
+                        return data.items.slice(0, 5).map(item => {
+                            // Extract company name from title
+                            const title = item.title || '';
+                            const companyMatch = title.match(/^([A-Za-z0-9]+(?:\s+[A-Za-z0-9]+)?)/);
+                            const countMatch = title.match(/(\d+(?:,\d+)?)\s*(?:employees?|workers?|jobs?|staff)/i);
+                            
+                            return {
+                                company: companyMatch ? companyMatch[1] : 'Tech Company',
+                                title: title,
+                                count: countMatch ? countMatch[1].replace(',', '') : null,
+                                date: item.pubDate || '',
+                                link: item.link || ''
+                            };
+                        });
+                    }
+                }
+            } catch (e) {
+                console.log(`Failed to fetch layoff news from ${source.name}`);
+            }
+            return [];
+        }));
+        
+        const allLayoffs = results.flat();
+        return allLayoffs.slice(0, 10);
     } catch (error) {
         console.error('Error fetching layoffs:', error);
         return [];
     }
 }
 
-// Fetch situation-specific news
-export async function fetchSituationNews(keywords, limit = 5) {
-    // Filter from existing news based on keywords
-    return [];
+// Fetch situation-specific news using Google News RSS
+export async function fetchSituationNews(keywords, limit = 8) {
+    try {
+        const searchQuery = encodeURIComponent(keywords);
+        const url = `https://news.google.com/rss/search?q=${searchQuery}&hl=en-US&gl=US&ceid=US:en`;
+        
+        const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`;
+        const response = await fetchWithTimeout(apiUrl, { timeout: 8000 });
+        
+        if (!response.ok) throw new Error('Google News API error');
+        
+        const data = await response.json();
+        
+        if (data.status === 'ok' && data.items) {
+            return data.items.slice(0, limit).map(item => ({
+                source: extractSourceFromTitle(item.title) || 'News',
+                title: cleanGoogleNewsTitle(item.title),
+                link: item.link || '',
+                pubDate: item.pubDate || '',
+                isAlert: hasAlertKeyword(item.title || '')
+            }));
+        }
+        
+        return [];
+    } catch (error) {
+        console.error('Error fetching situation news:', error);
+        return [];
+    }
+}
+
+// Helper to extract source from Google News title format "Title - Source"
+function extractSourceFromTitle(title) {
+    const match = title?.match(/ - ([^-]+)$/);
+    return match ? match[1].trim() : null;
+}
+
+// Helper to clean Google News title by removing source suffix
+function cleanGoogleNewsTitle(title) {
+    return title?.replace(/ - [^-]+$/, '').trim() || title;
 }
 
 // Fetch Intel feed (combines multiple intel sources)
@@ -445,5 +767,5 @@ export async function fetchIntelFeed() {
         return new Date(b.pubDate) - new Date(a.pubDate);
     });
 
-    return items.slice(0, 30);
+    return items.slice(0, 100); // Increased for better regional coverage
 }

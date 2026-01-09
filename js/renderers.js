@@ -8,9 +8,11 @@ export function renderNews(items, panelId, countId) {
     const panel = document.getElementById(panelId);
     const count = document.getElementById(countId);
 
+    if (!panel) return; // Panel doesn't exist in current tab
+
     if (items.length === 0) {
         panel.innerHTML = '<div class="error-msg">Failed to load</div>';
-        count.textContent = '0';
+        if (count) count.textContent = '0';
         return;
     }
 
@@ -22,7 +24,7 @@ export function renderNews(items, panelId, countId) {
         </div>
     `).join('');
 
-    count.textContent = items.length;
+    if (count) count.textContent = items.length;
 }
 
 // Render markets
@@ -30,9 +32,11 @@ export function renderMarkets(markets) {
     const panel = document.getElementById('marketsPanel');
     const count = document.getElementById('marketsCount');
 
+    if (!panel) return;
+
     if (markets.length === 0) {
         panel.innerHTML = '<div class="error-msg">Failed to load</div>';
-        count.textContent = '0';
+        if (count) count.textContent = '0';
         return;
     }
 
@@ -57,12 +61,14 @@ export function renderMarkets(markets) {
         `;
     }).join('');
 
-    count.textContent = markets.length;
+    if (count) count.textContent = markets.length;
 }
 
 // Render sector heatmap
 export function renderHeatmap(sectors) {
     const panel = document.getElementById('heatmapPanel');
+
+    if (!panel) return;
 
     if (sectors.length === 0) {
         panel.innerHTML = '<div class="error-msg">Failed to load</div>';
@@ -94,6 +100,8 @@ export function renderHeatmap(sectors) {
 export function renderCommodities(commodities) {
     const panel = document.getElementById('commoditiesPanel');
 
+    if (!panel) return;
+
     if (commodities.length === 0) {
         panel.innerHTML = '<div class="error-msg">Failed to load</div>';
         return;
@@ -124,9 +132,11 @@ export function renderPolymarket(markets) {
     const panel = document.getElementById('polymarketPanel');
     const count = document.getElementById('polymarketCount');
 
+    if (!panel) return;
+
     if (markets.length === 0) {
         panel.innerHTML = '<div class="error-msg">Failed to load predictions</div>';
-        count.textContent = '0';
+        if (count) count.textContent = '0';
         return;
     }
 
@@ -148,7 +158,7 @@ export function renderPolymarket(markets) {
         </div>
     `).join('');
 
-    count.textContent = markets.length;
+    if (count) count.textContent = markets.length;
 }
 
 // Render congressional trades
@@ -156,9 +166,11 @@ export function renderCongressTrades(trades) {
     const panel = document.getElementById('congressPanel');
     const count = document.getElementById('congressCount');
 
+    if (!panel) return;
+
     if (trades.length === 0) {
-        panel.innerHTML = '<div class="error-msg">Unable to load congressional trades</div>';
-        count.textContent = '0';
+        panel.innerHTML = '<div class="error-msg">Congressional trade data unavailable</div>';
+        if (count) count.textContent = '-';
         return;
     }
 
@@ -166,20 +178,20 @@ export function renderCongressTrades(trades) {
         <div class="congress-item">
             <div class="congress-info">
                 <div>
-                    <span class="congress-name">${t.name}</span>
-                    <span class="congress-party ${t.party}">${t.party}</span>
+                    <span class="congress-name">${escapeHtml(t.name || 'Unknown')}</span>
+                    <span class="congress-party ${t.party || ''}">${t.party || '-'}</span>
                 </div>
-                <div class="congress-ticker">${t.ticker}</div>
-                <div class="congress-meta">${timeAgo(t.date)} · ${t.district}</div>
+                <div class="congress-ticker">${escapeHtml(t.ticker || '-')}</div>
+                <div class="congress-meta">${t.date ? timeAgo(t.date) : ''} ${t.action || ''}</div>
             </div>
             <div class="congress-type">
-                <span class="congress-action ${t.type}">${t.type.toUpperCase()}</span>
-                <div class="congress-amount">${t.amount}</div>
+                <span class="congress-action ${(t.action || '').toLowerCase()}">${(t.action || '-').toUpperCase()}</span>
+                <div class="congress-amount">${escapeHtml(t.amount || '-')}</div>
             </div>
         </div>
     `).join('');
 
-    count.textContent = trades.length;
+    if (count) count.textContent = trades.length;
 }
 
 // Render whale watch
@@ -187,9 +199,11 @@ export function renderWhaleWatch(whales) {
     const panel = document.getElementById('whalePanel');
     const count = document.getElementById('whaleCount');
 
-    if (whales.length === 0) {
-        panel.innerHTML = '<div class="error-msg">No whale transactions detected</div>';
-        count.textContent = '0';
+    if (!panel) return;
+
+    if (!whales || whales.length === 0) {
+        panel.innerHTML = '<div class="error-msg">No large crypto transactions in last hour</div>';
+        if (count) count.textContent = '-';
         return;
     }
 
@@ -214,12 +228,14 @@ export function renderWhaleWatch(whales) {
         </div>
     `).join('');
 
-    count.textContent = whales.length;
+    if (count) count.textContent = whales.length;
 }
 
 // Render main character
 export function renderMainCharacter(rankings) {
     const panel = document.getElementById('mainCharPanel');
+
+    if (!panel) return;
 
     if (rankings.length === 0) {
         panel.innerHTML = '<div class="error-msg">No main character detected</div>';
@@ -252,9 +268,11 @@ export function renderGovContracts(contracts) {
     const panel = document.getElementById('contractsPanel');
     const count = document.getElementById('contractsCount');
 
+    if (!panel) return;
+
     if (contracts.length === 0) {
         panel.innerHTML = '<div class="error-msg">Unable to load contracts</div>';
-        count.textContent = '0';
+        if (count) count.textContent = '0';
         return;
     }
 
@@ -276,7 +294,7 @@ export function renderGovContracts(contracts) {
         </div>
     `).join('');
 
-    count.textContent = contracts.length;
+    if (count) count.textContent = contracts.length;
 }
 
 // Render AI news
@@ -284,9 +302,11 @@ export function renderAINews(items) {
     const panel = document.getElementById('aiPanel');
     const count = document.getElementById('aiCount');
 
+    if (!panel) return;
+
     if (items.length === 0) {
         panel.innerHTML = '<div class="error-msg">Unable to load AI news</div>';
-        count.textContent = '0';
+        if (count) count.textContent = '0';
         return;
     }
 
@@ -298,12 +318,14 @@ export function renderAINews(items) {
         </div>
     `).join('');
 
-    count.textContent = items.length;
+    if (count) count.textContent = items.length;
 }
 
 // Render money printer (Fed balance)
 export function renderMoneyPrinter(data) {
     const panel = document.getElementById('printerPanel');
+
+    if (!panel) return;
 
     const isExpanding = data.change > 0;
     const status = isExpanding ? 'PRINTER ON' : 'PRINTER OFF';
@@ -333,13 +355,15 @@ export function renderIntelFeed(items) {
     const panel = document.getElementById('intelPanel');
     const count = document.getElementById('intelCount');
 
+    if (!panel) return;
+
     if (!items || items.length === 0) {
         panel.innerHTML = '<div class="loading-msg">No intel available</div>';
-        count.textContent = '-';
+        if (count) count.textContent = '-';
         return;
     }
 
-    count.textContent = items.length;
+    if (count) count.textContent = items.length;
 
     panel.innerHTML = items.map(item => {
         let tagsHTML = '';
@@ -350,11 +374,18 @@ export function renderIntelFeed(items) {
             tagsHTML += '<span class="intel-tag govt">GOVT</span>';
         }
 
-        item.regions.slice(0, 2).forEach(r => {
+        // Handle items that might have region (singular) or regions (plural)
+        let regions = item.regions || [];
+        if (item.region && regions.length === 0) {
+            regions = [item.region];
+        }
+        const topics = item.topics || [];
+
+        regions.slice(0, 2).forEach(r => {
             tagsHTML += `<span class="intel-tag region">${r}</span>`;
         });
 
-        item.topics.slice(0, 2).forEach(t => {
+        topics.slice(0, 2).forEach(t => {
             tagsHTML += `<span class="intel-tag topic">${t}</span>`;
         });
 
@@ -363,7 +394,7 @@ export function renderIntelFeed(items) {
         return `
             <div class="intel-item ${item.isPriority ? 'priority' : ''}">
                 <div class="intel-header">
-                    <span class="intel-source">${item.source}</span>
+                    <span class="intel-source">${item.source || 'Intel'}</span>
                     <div class="intel-tags">${tagsHTML}</div>
                 </div>
                 <a href="${item.link}" target="_blank" class="intel-title">${item.title}</a>
@@ -380,13 +411,15 @@ export function renderLayoffs(layoffs) {
     const panel = document.getElementById('layoffsPanel');
     const count = document.getElementById('layoffsCount');
 
+    if (!panel) return;
+
     if (!layoffs || layoffs.length === 0) {
         panel.innerHTML = '<div class="loading-msg">No recent layoffs data</div>';
-        count.textContent = '-';
+        if (count) count.textContent = '-';
         return;
     }
 
-    count.textContent = layoffs.length;
+    if (count) count.textContent = layoffs.length;
 
     panel.innerHTML = layoffs.map(l => `
         <div class="layoff-item">
@@ -431,7 +464,9 @@ export function renderSituation(panelId, statusId, news, config) {
         }
     }
 
-    status.innerHTML = `<span class="situation-status ${threatLevel}">${threatText}</span>`;
+    if (status) {
+        status.innerHTML = `<span class="situation-status ${threatLevel}">${threatText}</span>`;
+    }
 
     const newsHTML = news.length > 0 ? news.map(n => `
         <div class="situation-item">
@@ -447,4 +482,192 @@ export function renderSituation(panelId, statusId, news, config) {
         </div>
         ${newsHTML}
     `;
+}
+
+// Helper function to extract key terms from a headline for matching
+function extractKeyTerms(title) {
+    const stopWords = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'it', 'its', 'as', 'by', 'with', 'from', 'into', 'about', 'after', 'before', 'over', 'under', 'between', 'through', 'during', 'up', 'down', 'out', 'off', 'says', 'said', 'new', 'news', 'report', 'reports', 'live', 'update', 'updates', 'breaking']);
+    return (title || '')
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !stopWords.has(w));
+}
+
+// Check if two headlines are about the same story
+function isSimilarStory(title1, title2) {
+    const terms1 = extractKeyTerms(title1);
+    const terms2 = extractKeyTerms(title2);
+    if (terms1.length === 0 || terms2.length === 0) return false;
+    
+    const commonTerms = terms1.filter(t => terms2.includes(t));
+    // Consider similar if they share 2+ key terms or 40%+ overlap
+    const overlapRatio = commonTerms.length / Math.min(terms1.length, terms2.length);
+    return commonTerms.length >= 2 || overlapRatio >= 0.4;
+}
+
+// Ad/spam keywords to filter out of ticker
+const TICKER_FILTER_KEYWORDS = [
+    'nordvpn', 'expressvpn', 'surfshark', 'vpn deal', 'vpn sale',
+    'sponsored', 'advertisement', 'promo code', 'discount code', 'affiliate',
+    'buy now', 'limited time offer', 'click here', 'subscribe now',
+    'free trial', 'black friday', 'cyber monday', 'sale ends',
+    'get it now', 'order now', 'shop now', 'best deal', 'save up to'
+];
+
+function isAdContent(title) {
+    const lowerTitle = title.toLowerCase();
+    return TICKER_FILTER_KEYWORDS.some(kw => lowerTitle.includes(kw));
+}
+
+// News ticker for most reported/trending news across sources
+export function renderNewsTicker(allNews) {
+    const tickerTrack = document.getElementById('tickerTrack');
+    if (!tickerTrack) return;
+
+    if (!allNews || allNews.length === 0) {
+        tickerTrack.innerHTML = '<span class="ticker-item">No news available</span>';
+        return;
+    }
+
+    // Filter out ads/sponsored content first
+    const filteredNews = allNews.filter(item => !isAdContent(item.title || ''));
+
+    // Group similar stories and count how many sources report them
+    const storyGroups = [];
+    const processed = new Set();
+
+    filteredNews.forEach((item, index) => {
+        if (processed.has(index)) return;
+        
+        const group = {
+            representative: item,
+            sources: new Set([item.source]),
+            count: 1
+        };
+        processed.add(index);
+
+        // Find similar stories from other sources
+        filteredNews.forEach((other, otherIndex) => {
+            if (processed.has(otherIndex)) return;
+            if (other.source === item.source) return; // Skip same source
+            
+            if (isSimilarStory(item.title, other.title)) {
+                group.sources.add(other.source);
+                group.count++;
+                processed.add(otherIndex);
+            }
+        });
+
+        storyGroups.push(group);
+    });
+
+    // Sort by number of sources reporting (most reported first)
+    storyGroups.sort((a, b) => b.count - a.count);
+
+    // Take top stories - prioritize multi-source stories, then recent
+    const trendingStories = storyGroups
+        .filter(g => g.count >= 2) // Stories reported by 2+ sources
+        .slice(0, 10);
+
+    // If not enough trending stories, add most recent single-source stories
+    if (trendingStories.length < 5) {
+        const singleSourceStories = storyGroups
+            .filter(g => g.count === 1)
+            .sort((a, b) => new Date(b.representative.pubDate) - new Date(a.representative.pubDate))
+            .slice(0, 10 - trendingStories.length);
+        trendingStories.push(...singleSourceStories);
+    }
+
+    if (trendingStories.length === 0) {
+        tickerTrack.innerHTML = '<span class="ticker-item">No trending news available</span>';
+        return;
+    }
+
+    tickerTrack.innerHTML = trendingStories.map(group => {
+        const item = group.representative;
+        const isTrending = group.count >= 2;
+        const sourceCount = group.count > 1 ? ` (${group.count} sources)` : '';
+        return `
+            <a href="${item.link}" target="_blank" rel="noopener" class="ticker-item ${isTrending ? 'ticker-trending' : ''}">
+                <span class="ticker-source">${item.source || 'News'}${sourceCount}</span>
+                ${escapeHtml(item.title)}
+            </a>
+        `;
+    }).join('<span class="ticker-separator">•</span>');
+    
+    // Duplicate content for seamless loop
+    tickerTrack.innerHTML += tickerTrack.innerHTML;
+}
+
+// Render Cyber Threats panel
+export function renderCyberThreats(items) {
+    const panel = document.getElementById('cyberPanel');
+    const count = document.getElementById('cyberCount');
+
+    if (!panel || !count) return;
+
+    if (items.length === 0) {
+        panel.innerHTML = '<div class="error-msg">No cyber threats data</div>';
+        count.textContent = '0';
+        return;
+    }
+
+    panel.innerHTML = items.map(item => `
+        <div class="item ${item.isCritical ? 'alert' : ''}">
+            <div class="item-source">${item.source || 'Cyber'}${item.isCritical ? '<span class="alert-tag">CRITICAL</span>' : ''}</div>
+            <a class="item-title" href="${item.link}" target="_blank">${escapeHtml(item.title)}</a>
+            <div class="item-time">${timeAgo(item.pubDate)}</div>
+        </div>
+    `).join('');
+
+    count.textContent = items.length;
+}
+
+// Render Natural Disasters panel
+export function renderDisasters(items) {
+    const panel = document.getElementById('disastersPanel');
+    const count = document.getElementById('disastersCount');
+
+    if (!panel || !count) return;
+
+    if (items.length === 0) {
+        panel.innerHTML = '<div class="error-msg">No disaster alerts</div>';
+        count.textContent = '0';
+        return;
+    }
+
+    panel.innerHTML = items.map(item => `
+        <div class="item ${item.isUrgent ? 'alert' : ''}">
+            <div class="item-source">${item.source || 'Alert'}${item.isUrgent ? '<span class="alert-tag">URGENT</span>' : ''}</div>
+            <a class="item-title" href="${item.link}" target="_blank">${escapeHtml(item.title)}</a>
+            <div class="item-time">${timeAgo(item.pubDate)}</div>
+        </div>
+    `).join('');
+
+    count.textContent = items.length;
+}
+
+// Render Social Trends panel
+export function renderSocialTrends(items) {
+    const panel = document.getElementById('socialPanel');
+    const count = document.getElementById('socialCount');
+
+    if (!panel || !count) return;
+
+    if (items.length === 0) {
+        panel.innerHTML = '<div class="error-msg">No social trends</div>';
+        count.textContent = '0';
+        return;
+    }
+
+    panel.innerHTML = items.map(item => `
+        <div class="item">
+            <div class="item-source">${item.source || 'Social'}</div>
+            <a class="item-title" href="${item.link}" target="_blank">${escapeHtml(item.title)}</a>
+            <div class="item-time">${timeAgo(item.pubDate)}</div>
+        </div>
+    `).join('');
+
+    count.textContent = items.length;
 }
