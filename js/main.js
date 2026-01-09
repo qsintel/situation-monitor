@@ -1024,8 +1024,7 @@ function initHelpTooltips() {
     window.addEventListener('resize', scheduleReposition);
 }
 
-// Initialize application
-document.addEventListener('DOMContentLoaded', () => {
+function boot() {
     // Initialize panels
     initPanels(renderMonitorsList);
     
@@ -1072,4 +1071,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-refresh every 5 minutes
     setInterval(refreshAll, 5 * 60 * 1000);
-});
+}
+
+// Initialize application
+// NOTE: index.html dynamically injects the module script on GitHub Pages.
+// If the module loads after DOMContentLoaded has already fired, a plain
+// DOMContentLoaded listener will never run and the splash will stay forever.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+} else {
+    boot();
+}
